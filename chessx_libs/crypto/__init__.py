@@ -10,5 +10,6 @@ from .asym import (x25519_keypair, x25519_shared, x25519_public, ed25519_keypair
 from .aead import (chacha20_poly1305_encrypt, chacha20_poly1305_decrypt, aes_gcm_encrypt, aes_gcm_decrypt,
                    seal, open_sealed, new_key, DecryptError, BACKEND as CRYPTO_BACKEND)
 from .envelope import seal_box, open_box, envelope_encrypt, envelope_decrypt, rewrap_envelope
+from .session import Handshake, HandshakeError, Session
 from .netsec import ProxyRotator, KillSwitchEngaged, doh_resolve, FingerprintRotator
 from .guard import debugger_attached, sandbox_indicators, in_sandbox

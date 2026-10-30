@@ -32,3 +32,19 @@ header authenticated), `open_sealed(key, blob, aad)` raises `DecryptError`. Rota
 versioned `CXSB` header, `context` bound as AAD (anonymous sender; no sender authentication -- sign separately if needed).
 `envelope_encrypt(kek, data, context)` / `envelope_decrypt` / `rewrap_envelope(old, new, blob)` (KEK rotation without
 re-encrypting data): random per-object DEK wrapped by the KEK, `CXEV` header.
+
+## E2E session -- threat model (session.py)
+`Handshake(id_sk, id_pk, peer_id_pk, initiator)`: 3 messages (`start` -> `respond` -> `finish` -> `complete`).
+Ephemeral X25519 per session; both sides sign the transcript hash (protocol id, both ephemerals, both identities)
+with Ed25519, so each side authenticates the peer it *expected* (`peer_id_pk`) and the ephemerals cannot be swapped.
+Keys: HKDF-SHA256 -> separate initiator->responder / responder->initiator ChaCha20-Poly1305 keys + session id.
+Frames carry a 64-bit counter used as the nonce; receivers accept only the next counter (replay, reordering, and
+reflection are rejected; a failed decrypt does not advance state).
+
+Protects against: passive eavesdroppers, active MITM *when identity keys are pinned/verified out of band*,
+tampering, replay within a session; forward secrecy for past sessions once ephemeral keys are gone.
+Does NOT provide: identity-key distribution/verification (caller must pin `peer_id_pk`), post-compromise security
+or ratcheting (no Double Ratchet: compromise of session keys exposes the whole session), tolerance of lost/reordered
+messages (use a reliable ordered transport, or re-handshake), metadata/traffic-analysis hiding, deniability,
+multi-device/groups, handshake replay protection at the application level (responder state is per object).
+Pure-Python fallback is not constant-time. This code has NOT been externally audited -- treat it as such.
