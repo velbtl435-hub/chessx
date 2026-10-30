@@ -1,5 +1,5 @@
 """Core OSINT types: Entity (what we look up) and Finding (what a source says about it)."""
-import ipaddress, re, time
+import ipaddress, os, re, time
 from dataclasses import dataclass, field, asdict
 from typing import List
 
@@ -33,6 +33,8 @@ def normalize(kind: str, value: str) -> str:
 def detect_kind(value: str) -> str:
     """Best-effort guess of an entity kind from a raw string."""
     v = (value or "").strip()
+    if v.startswith(("/", "./", "../", "~/")) or (os.sep in v and os.path.isfile(v)):
+        return "file"
     try:
         ipaddress.ip_address(v)
         return "ip"
