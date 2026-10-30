@@ -48,3 +48,11 @@ or ratcheting (no Double Ratchet: compromise of session keys exposes the whole s
 messages (use a reliable ordered transport, or re-handshake), metadata/traffic-analysis hiding, deniability,
 multi-device/groups, handshake replay protection at the application level (responder state is per object).
 Pure-Python fallback is not constant-time. This code has NOT been externally audited -- treat it as such.
+
+## Keystore (keystore.py)
+`Keystore.create(path, password)` / `Keystore.open(path, password | keyring_service=..)`: JSON file (atomic write, 0600);
+KEK = Argon2id(password, random salt, t=3 m=64MiB p=4); every key version AEAD-wrapped with AAD = name+version.
+`put`/`rotate` (new active version, old ones stay readable), `get(name, version)` -> bytearray, `retire`, `delete`,
+`change_password` (fresh salt, re-wraps all). Optional OS keyring for the password (`keyring` package, lazy import).
+Zeroization limits: `zeroize()`/`close()` overwrite bytearrays, but Python strings are immutable and copies may exist
+in C libraries, the GC, swap or core dumps -- best-effort only. Not safe for concurrent writers (no file locking).
