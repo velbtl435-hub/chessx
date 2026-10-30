@@ -195,11 +195,13 @@ def _register_retro():
     for _c in _m.LAYOUTS:  # procedural tracker music, short by default (bars=2)
         for _st in _m.STYLES:
             register(f"retro.{_c}.music.{_st}",
-                     lambda rate=RATE, seed=0, _c=_c, _st=_st, bars=2, loops=1, loop=False, **kw:
-                     _m.render_music(_c, _st, seed=seed, bars=bars, rate=rate, loops=loops, loop=loop), "retro")
+                     lambda rate=RATE, seed=0, _c=_c, _st=_st, bars=2, loops=1, loop=False, seamless=False, **kw:
+                     _m.render_music(_c, _st, seed=seed, bars=bars, rate=rate, loops=loops, loop=loop,
+                                     seamless=seamless), "retro")
     register("retro.nes.music.demo",
-             lambda rate=RATE, seed=0, loops=1, loop=False, **kw: _m.render_song(
-                 _m.parse_song(_m.DEMO), rate=rate, seed=seed, loops=2 if loop and loops == 1 else max(1, int(loops))), "retro")
+             lambda rate=RATE, seed=0, loops=1, loop=False, seamless=False, **kw: _m.render_song(
+                 _m.parse_song(_m.DEMO), rate=rate, seed=seed, loops=2 if loop and loops == 1 else max(1, int(loops)),
+                 seamless=seamless), "retro")
 
 
 _register_retro()

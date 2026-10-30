@@ -161,6 +161,26 @@ class TestRetroMusic(unittest.TestCase):
         g = M.parse_song("chip gb\npattern A\nnoise c . . .\n")
         self.assertEqual(M._channel_segments(g, g.channels[3], 1)[0]["f0"], M.DRUM_KITS["gb"]["h"]["f0"])
 
+    def test_seamless_loop_tail(self):
+        x = np.arange(10.0)
+        self.assertEqual(M.fold_tail(x, 4).tolist(), [0 + 4 + 8, 1 + 5 + 9, 2 + 6, 3 + 7])
+        self.assertEqual(M.fold_tail(np.ones(2), 4).tolist(), [1, 1, 0, 0])
+        self.assertEqual(M.fold_tail(np.ones((6, 2)), 4).shape, (4, 2))
+        s = M.compose("snes", "title", 1, bars=2)  # S-DSP echo leaves a tail past the song
+        n = int(round(s.duration() * 22050))
+        plain, seam = M.render_song(s, rate=22050), M.render_song(s, rate=22050, seamless=True)
+        self.assertGreater(len(plain), n)
+        self.assertEqual(len(seam), n)
+        self.assertLessEqual(float(np.abs(seam).max()), 0.9)
+        # the tail is carried into the start: the head differs from the plain render's head
+        self.assertFalse(np.allclose(seam[:2000] / np.abs(seam).max(), plain[:2000] / np.abs(plain).max()))
+        st = M.render_song(s, rate=22050, stereo_out=True, seamless=True)
+        self.assertEqual(st.shape, (n, 2))
+        self.assertTrue(np.array_equal(seam, M.render_song(s, rate=22050, seamless=True)))
+        from chessx_libs.sounds import events
+        e = events.render("retro.ps1.music.title", rate=22050, seamless=True)
+        self.assertEqual(len(e), int(round(M.compose("ps1", "title", 0, 2).duration() * 22050)))
+
     def test_loop_option(self):
         a = events.render("retro.gb.music.victory", seed=1)
         b = events.render("retro.gb.music.victory", seed=1, loops=2)

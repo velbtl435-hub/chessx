@@ -125,7 +125,11 @@ channels. `fm.opl_rhythm` follows the hardware tricks: BD is a normal 2-op FM vo
 uses bit 8 of the ch8 modulator phase XOR the 23-bit noise LFSR, HH/CYM build their phase from bit logic of op13
 (ch8) and op17 (ch9) phases (HH also with noise). Drum letters `t`/`c` fall back to kick/hat on other kits.
 
+### Seamless loops
+`render_song(..., seamless=True)`, `render_music(..., seamless=True)` and the `retro.*.music.*` events with
+`seamless=True` return exactly the song length with the echo/reverb tail folded back onto the start (`fold_tail`),
+so the clip loops end-to-end with the tail continuing across the loop point. Default keeps the appended tail.
+
 ## Backlog (retro)
 
-* Loop tail crossfade (echo/reverb tail wrapping into the next pass) for seamless loops.
 * Per-channel instruments in the compact text format (e.g. `inst pulse1 duty=0.125`).

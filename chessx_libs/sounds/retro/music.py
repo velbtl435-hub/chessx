@@ -396,8 +396,26 @@ def _apply_automation(song, x, auto, rate, loops):
     return x
 
 
-def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=False):
-    """Render a Song to mono float array (or (n,2) if stereo_out). Deterministic, peak <= 0.89."""
+def fold_tail(x, n):
+    """Seamless loop: add everything past sample n (echo/reverb/release tail) back onto the start, repeatedly if
+    the tail is longer than n, and trim to n samples. Playing the result end-to-end continues the tail across the
+    loop point instead of cutting it. Works on mono (n,) and stereo (n,2)."""
+    np = need_numpy()
+    if n <= 0 or len(x) <= n:
+        out = np.zeros((n,) + x.shape[1:])
+        out[:len(x)] = x[:n]
+        return out
+    out = np.array(x[:n], dtype=float)
+    for k in range(n, len(x), n):
+        part = x[k:k + n]
+        out[:len(part)] += part
+    return out
+
+
+def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=False, seamless=False):
+    """Render a Song to mono float array (or (n,2) if stereo_out). Deterministic, peak <= 0.89.
+    seamless=True: exact song length with the echo/reverb tail folded onto the start (see fold_tail) so the clip
+    loops without a gap or a cut tail; default keeps the tail appended after the song."""
     np = need_numpy()
     c = get_chip(song.chip)
     total = int(round(song.duration(loops) * rate))
@@ -434,9 +452,13 @@ def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=Fal
         if auto:
             chans = [_apply_automation(song, st[:, k], auto, rate, loops) for k in (0, 1)]
             st = np.stack([chans[0], chans[1]], axis=1)
+        if seamless:
+            st = fold_tail(st, total)
         return dsp.normalize(st, 0.89)
     x = dsp.mix(*tracks)
     x = _apply_automation(song, x, auto, rate, loops)
+    if seamless:
+        x = fold_tail(x, total)
     if crush:
         x = era_crush(dsp.normalize(x, 0.89), c.era, rate)
     return dsp.normalize(x, 0.89)
@@ -591,10 +613,11 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None
                 sid_filter=sid_filter, rhythm=bool(rhythm), automation=dict(automation or {}))
 
 
-def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1, loop=False):
-    """loops=N repeats the order list N times; loop=True is shorthand for loops=2 (seamless repeat)."""
+def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1, loop=False, seamless=False):
+    """loops=N repeats the order list N times; loop=True is shorthand for loops=2.
+    seamless=True returns an exactly loop-length clip with the tail crossfaded into the start."""
     loops = max(1, int(loops)) if not (loop and loops == 1) else 2
-    return render_song(compose(chip_name, style, seed, bars), rate=rate, seed=seed, loops=loops)
+    return render_song(compose(chip_name, style, seed, bars), rate=rate, seed=seed, loops=loops, seamless=seamless)
 
 
 # ---------------------------------------------------------------- compact text format
