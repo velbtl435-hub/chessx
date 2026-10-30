@@ -4,7 +4,7 @@ from .translator import Translator
 from .namespaces import NAMESPACES
 
 # Keep in sync with strings.py: every language must have exactly this many keys.
-EXPECTED_KEYS = 84
+EXPECTED_KEYS = 87
 
 
 def run() -> bool:
