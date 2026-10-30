@@ -65,8 +65,36 @@ class Browser:
         return "\n".join([bar, render_page(self.page, width, color, self.focus), "", keys])
 
 
-def run(url=None, input_fn=input, out=None):
-    """Interactive loop for chessx.py's menu. Uses Rich for output if available."""
+def _pick_mode(mode, input_fn, out):
+    if mode in ("keys", "prompt"):
+        return mode
+    from .tui import available
+    if input_fn is not input:  # caller supplied its own line reader -> prompt mode
+        return "prompt"
+    try:
+        tty = sys.stdin.isatty() and out.isatty()
+    except Exception:
+        tty = False
+    return "keys" if tty and available() else "prompt"
+
+
+def run(url=None, input_fn=input, out=None, mode=None):
+    """Browser for chessx.py's menu. mode: None=auto, "keys" (curses single-key) or "prompt" (typed commands).
+    Auto picks "keys" on a real TTY with curses, else "prompt". Returns the Browser."""
+    out = out or sys.stdout
+    chosen = _pick_mode(mode, input_fn, out)
+    if chosen == "keys":
+        from .tui import available, run_curses
+        if available():
+            b = Browser(); b.open(url or DEMO_URL)
+            try:
+                return run_curses(b)
+            except Exception as e:  # e.g. terminal without curses support
+                print(f"(curses mode unavailable: {e}; using prompt mode)", file=out)
+    return _run_prompt(url, input_fn, out)
+
+
+def _run_prompt(url, input_fn, out):
     out = out or sys.stdout
     try:
         from rich.console import Console

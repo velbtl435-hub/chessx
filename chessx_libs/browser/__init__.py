@@ -8,6 +8,7 @@ from .parser import Block, Page, parse_html
 from .render import render_page, TILE_COLORS
 from .fetch import fetch, FetchError, DEMO_URL, DEMO_HTML
 from .app import Browser, run
+from .keys import KeyState, handle_key
 
-__all__ = ["run", "render_page", "parse_html", "fetch", "FetchError", "Browser",
+__all__ = ["run", "render_page", "handle_key", "KeyState", "parse_html", "fetch", "FetchError", "Browser",
            "Block", "Page", "TILE_COLORS", "DEMO_URL", "DEMO_HTML"]
