@@ -33,3 +33,16 @@ relatorio = investigate("amostra.bin")
 
 ## Testes
 `python -m pytest chessx_libs/reversing/tests` (compila um hello world com gcc; testes de angr são pulados se ausente).
+
+## Modo detetive expandido (#11) — `provenance.py`
+- **Hashes:** md5/sha1/sha256 + ssdeep (`ssdeep`/`ppdeep`) e TLSH (`tlsh`) quando instalados; `imphash` para PE.
+- **Trilha de origem:** mtime/ctime/atime, dono, permissões, xattrs (`user.xdg.origin.url`, `referrer.url`)
+  e sidecars `Zone.Identifier` (Mark-of-the-Web do Windows); linha do tempo com o timestamp de compilação PE.
+- **Metadados embutidos:** ELF build-id, ABI tag, `.gnu_debuglink`, `.comment`, Go build ID; PE VersionInfo
+  (CompanyName, OriginalFilename…), caminho PDB; PDF Info, PNG tEXt, comentário/entradas ZIP.
+- **Recursos embutidos:** carving de ZIP/PDF/PNG/gzip/7z/PE/ELF/PEM após o offset 0.
+- **Tabela de imports PE** (`parse_pe_imports`, por nome e ordinal).
+- **Entropia por seção** + veredito de empacotamento (UPX, Themida, VMProtect, ASPack, MPRESS…).
+- **Fingerprint de toolchain em binários stripped:** nomes de seção, padrões de bytes, imports e nomes de
+  função do radare2/angr (Go, Rust, GCC, Clang, MSVC, MinGW, PyInstaller, Nuitka, Nim, Zig, Swift, .NET…), com pontuação.
+- `investigate(path)` inclui `report["provenance"]` (desative com `expanded=False`); `--angr` alimenta o fingerprint.

@@ -127,3 +127,119 @@ def test_backend_builtin(hello):
 def test_backend_invalid():
     with pytest.raises(ValueError):
         rv.analyze_binary("/bin/ls", backend="ida")
+
+
+# --- #11 expanded detective mode ------------------------------------------------
+import struct as _st
+from chessx_libs.reversing import provenance as _prov_mod  # noqa: F401
+
+
+def _mini_pe_with_imports():
+    """Hand-built PE32+ with one .idata section importing KERNEL32.dll!ExitProcess and ordinal #5."""
+    b = bytearray(0x400)
+    b[:2] = b"MZ"; _st.pack_into("<I", b, 0x3C, 0x40); b[0x40:0x44] = b"PE\x00\x00"
+    _st.pack_into("<HHIIIHH", b, 0x44, 0x8664, 1, 0x5F5E1000, 0, 0, 240, 0x22)
+    opt = 0x58; _st.pack_into("<H", b, opt, 0x20B); _st.pack_into("<I", b, opt + 16, 0x1000)
+    _st.pack_into("<Q", b, opt + 24, 0x140000000)
+    _st.pack_into("<II", b, opt + 112 + 8, 0x1000, 40)  # import data directory
+    sh = opt + 240; b[sh:sh + 8] = b".idata\x00\x00"
+    _st.pack_into("<IIII", b, sh + 8, 0x200, 0x1000, 0x200, 0x200)
+    base = 0x200  # file offset of RVA 0x1000
+    _st.pack_into("<IIIII", b, base, 0x1040, 0, 0, 0x1080, 0x1040)  # descriptor; next 20 bytes zero = end
+    _st.pack_into("<QQQ", b, base + 0x40, 0x1090, (1 << 63) | 5, 0)  # ILT: by-name, by-ordinal, end
+    b[base + 0x80:base + 0x8D] = b"KERNEL32.dll\x00"
+    b[base + 0x92:base + 0x9E] = b"ExitProcess\x00"
+    vi = b""
+    for k, v in (("CompanyName", "ChessX Test Co"), ("OriginalFilename", "mini.exe")):
+        kk = k.encode("utf-16-le") + b"\x00\x00"
+        pad = (-(0x300 + len(vi) + len(kk))) % 4
+        vi += kk + b"\x00" * pad + v.encode("utf-16-le") + b"\x00\x00\x00\x00"
+    b[0x300:0x300 + len(vi)] = vi
+    return bytes(b)
+
+
+def test_pe_import_table_and_imphash():
+    h = rv.parse_pe(_mini_pe_with_imports())
+    assert h["import_table"] == {"kernel32.dll": ["ExitProcess", "#5"]}
+    assert "kernel32.dll!ExitProcess" in h["imports"]
+    assert h["imphash"] == __import__("hashlib").md5(b"kernel32.exitprocess,kernel32.#5").hexdigest()
+
+
+def test_pe_metadata_version_info_timestamp(tmp_path):
+    p = tmp_path / "mini.exe"; p.write_bytes(_mini_pe_with_imports())
+    r = rv.provenance(str(p))
+    assert r["metadata"]["version_info"]["CompanyName"] == "ChessX Test Co"
+    assert r["metadata"]["pe_timestamp"].startswith("2020-")
+    assert r["imphash"] and any(t["event"] == "pe.compile_time" for t in r["timeline"])
+
+
+def test_hashes_and_optional_fuzzy():
+    h = rv.hashes(b"abc")
+    assert h["sha1"] == "a9993e364706816aba3e25717850c26c9cd0d89d" and "ssdeep" in h and "tlsh" in h
+
+
+def test_elf_metadata_and_fingerprint(hello):
+    r = rv.provenance(hello)
+    assert r["metadata"].get("build_id") and any("GCC" in c for c in r["metadata"]["comment"])
+    assert r["fingerprint"][0]["toolchain"] in ("GCC", "glibc C runtime")
+    assert not r["packing"]["likely_packed"]
+    assert {s["name"] for s in r["section_entropy"]} >= {".text"}
+
+
+def test_packing_detection_high_entropy(tmp_path):
+    p = tmp_path / "blob.bin"; p.write_bytes(os.urandom(200_000))
+    assert rv.provenance(str(p))["packing"]["likely_packed"]
+
+
+def test_embedded_zip_and_pdf_carving():
+    import io, zipfile
+    zb = io.BytesIO()
+    with zipfile.ZipFile(zb, "w") as z:
+        z.writestr("payload.txt", "x"); z.comment = b"made-by-test"
+    blob = b"HEADER" * 10 + zb.getvalue() + b"%PDF-1.4 /Author (Sam) /Producer (TeX)"
+    emb = rv.embedded_resources(blob)
+    zipi = next(e for e in emb if e["type"] == "zip")
+    assert zipi["offset"] == 60 and zipi["entries"] == ["payload.txt"] and zipi["comment"] == "made-by-test"
+    assert next(e for e in emb if e["type"] == "pdf")["info"]["Author"] == "Sam"
+
+
+def test_xattr_and_zone_identifier_trail(tmp_path):
+    p = tmp_path / "dl.bin"; p.write_bytes(b"data")
+    (tmp_path / "dl.bin:Zone.Identifier").write_text("[ZoneTransfer]\nZoneId=3\nHostUrl=https://example.com/dl.bin\n")
+    try:
+        os.setxattr(p, "user.xdg.origin.url", b"https://example.com/dl.bin")
+        has_x = True
+    except (OSError, AttributeError):
+        has_x = False
+    t = rv.provenance(str(p))["filesystem"]
+    assert t["sidecars"][":Zone.Identifier"]["HostUrl"] == "https://example.com/dl.bin"
+    if has_x:
+        assert t["xattrs"]["user.xdg.origin.url"] == "https://example.com/dl.bin"
+
+
+def _build(tool, src, ext, cmd, tmp):
+    if not shutil.which(tool):
+        pytest.skip(f"{tool} missing")
+    s = tmp / f"m.{ext}"; s.write_text(src); out = tmp / f"m_{ext}"
+    subprocess.run(cmd(str(s), str(out)), check=True, capture_output=True, cwd=tmp, timeout=300)
+    return str(out)
+
+
+def test_fingerprint_stripped_go(tmp_path):
+    b = _build("go", 'package main\nimport "fmt"\nfunc main(){fmt.Println("hi")}\n', "go",
+               lambda s, o: ["go", "build", "-ldflags=-s -w", "-o", o, s], tmp_path)
+    fp = rv.provenance(b)["fingerprint"]
+    assert fp[0]["toolchain"] == "Go" and "D" not in [f["toolchain"] for f in fp]
+
+
+def test_fingerprint_stripped_rust(tmp_path):
+    b = _build("rustc", 'fn main(){println!("hi");}\n', "rs",
+               lambda s, o: ["rustc", "-O", "-C", "strip=symbols", "-o", o, s], tmp_path)
+    assert rv.provenance(b)["fingerprint"][0]["toolchain"] == "Rust"
+
+
+def test_investigate_includes_provenance_json():
+    r = rv.investigate("/bin/ls")
+    json.dumps(r)
+    assert r["provenance"]["hashes"]["sha256"] == r["file"]["sha256"]
+    assert "provenance" not in rv.investigate("/bin/ls", expanded=False)
