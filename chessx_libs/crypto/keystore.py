@@ -61,25 +61,26 @@ def keyring_get_password(service: str, account: str) -> str:
 
 
 class Keystore:
-    def __init__(self, path, data, kek):
+    def __init__(self, path, data, kek, *, allow_fallback: bool = False):
         self.path, self._data, self._kek = path, data, kek
+        self.allow_fallback = allow_fallback
 
     # ---- lifecycle ----
     @classmethod
-    def create(cls, path, password, kdf_params=None, overwrite=False):
+    def create(cls, path, password, kdf_params=None, overwrite=False, *, allow_fallback: bool = False):
         if os.path.exists(path) and not overwrite:
             raise FileExistsError(path)
         params = dict(DEFAULT_KDF, **(kdf_params or {}))
         salt = secrets.token_bytes(16)
         kek = bytearray(argon2id(password, salt, 32, params["t"], params["m"], params["p"]))
         data = {"format": FORMAT, "version": VERSION, "kdf": dict(alg="argon2id", salt=_e(salt), **params),
-                "check": _e(aead.seal(bytes(kek), CHECK, _aad("", 0))), "keys": {}}
-        ks = cls(path, data, kek)
+                "check": _e(aead.seal(bytes(kek), CHECK, _aad("", 0), allow_fallback=allow_fallback)), "keys": {}}
+        ks = cls(path, data, kek, allow_fallback=allow_fallback)
         ks.save()
         return ks
 
     @classmethod
-    def open(cls, path, password=None, keyring_service=None, keyring_account=None):
+    def open(cls, path, password=None, keyring_service=None, keyring_account=None, *, allow_fallback: bool = False):
         if password is None:
             if not keyring_service:
                 raise KeystoreError("password or keyring_service required")
@@ -91,11 +92,11 @@ class Keystore:
         k = data["kdf"]
         kek = bytearray(argon2id(password, _d(k["salt"]), 32, k["t"], k["m"], k["p"]))
         try:
-            aead.open_sealed(bytes(kek), _d(data["check"]), _aad("", 0))
+            aead.open_sealed(bytes(kek), _d(data["check"]), _aad("", 0), allow_fallback=allow_fallback)
         except aead.DecryptError:
             zeroize(kek)
             raise KeystoreError("wrong password or corrupted keystore") from None
-        return cls(path, data, kek)
+        return cls(path, data, kek, allow_fallback=allow_fallback)
 
     def save(self):
         d = os.path.dirname(os.path.abspath(self.path))
@@ -140,7 +141,7 @@ class Keystore:
         key = secrets.token_bytes(nbytes) if key is None else bytes(key)
         ent = self._data["keys"].setdefault(name, {"active": 0, "versions": {}})
         ver = max([0] + [int(v) for v in ent["versions"]]) + 1
-        ent["versions"][str(ver)] = {"wrapped": _e(aead.seal(kek, key, _aad(name, ver))), "created": int(time.time())}
+        ent["versions"][str(ver)] = {"wrapped": _e(aead.seal(kek, key, _aad(name, ver), allow_fallback=self.allow_fallback)), "created": int(time.time())}
         ent["active"] = ver
         self.save()
         return ver
@@ -159,7 +160,7 @@ class Keystore:
         except KeyError:
             raise KeyError(f"{name} v{ver}") from None
         try:
-            return bytearray(aead.open_sealed(kek, _d(w), _aad(name, ver)))
+            return bytearray(aead.open_sealed(kek, _d(w), _aad(name, ver), allow_fallback=self.allow_fallback))
         except aead.DecryptError:
             raise KeystoreError(f"{name} v{ver}: integrity check failed") from None
 
@@ -185,11 +186,11 @@ class Keystore:
         new = bytearray(argon2id(new_password, salt, 32, params["t"], params["m"], params["p"]))
         for name, ent in self._data["keys"].items():
             for v, item in ent["versions"].items():
-                raw = bytearray(aead.open_sealed(old, _d(item["wrapped"]), _aad(name, int(v))))
-                item["wrapped"] = _e(aead.seal(bytes(new), bytes(raw), _aad(name, int(v))))
+                raw = bytearray(aead.open_sealed(old, _d(item["wrapped"]), _aad(name, int(v)), allow_fallback=self.allow_fallback))
+                item["wrapped"] = _e(aead.seal(bytes(new), bytes(raw), _aad(name, int(v)), allow_fallback=self.allow_fallback))
                 zeroize(raw)
         self._data["kdf"] = dict(alg="argon2id", salt=_e(salt), **params)
-        self._data["check"] = _e(aead.seal(bytes(new), CHECK, _aad("", 0)))
+        self._data["check"] = _e(aead.seal(bytes(new), CHECK, _aad("", 0), allow_fallback=self.allow_fallback))
         zeroize(self._kek)
         self._kek = new
         self.save()

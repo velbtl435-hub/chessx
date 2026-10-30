@@ -21,14 +21,14 @@ def _sb_key(shared, eph_pk, rpk, context):
     return hkdf(shared, salt=eph_pk + rpk, info=b"chessx/sealedbox/v1|" + context, length=32)
 
 
-def seal_box(recipient_pk: bytes, plaintext: bytes, context: bytes = b"") -> bytes:
+def seal_box(recipient_pk: bytes, plaintext: bytes, context: bytes = b"", *, allow_fallback: bool = False) -> bytes:
     eph_sk, eph_pk = x25519_keypair()
     key = _sb_key(x25519_shared(eph_sk, recipient_pk), eph_pk, recipient_pk, context)
     header = SB_MAGIC + bytes([VERSION])
-    return header + eph_pk + aead.seal(key, plaintext, header + eph_pk + context)
+    return header + eph_pk + aead.seal(key, plaintext, header + eph_pk + context, allow_fallback=allow_fallback)
 
 
-def open_box(recipient_sk: bytes, blob: bytes, context: bytes = b"") -> bytes:
+def open_box(recipient_sk: bytes, blob: bytes, context: bytes = b"", *, allow_fallback: bool = False) -> bytes:
     if len(blob) < 5 + 32 + aead.MIN_BLOB:
         raise aead.DecryptError("sealed box too short")
     header, eph_pk, body = blob[:5], blob[5:37], blob[37:]
@@ -39,17 +39,17 @@ def open_box(recipient_sk: bytes, blob: bytes, context: bytes = b"") -> bytes:
     except ValueError:
         raise aead.DecryptError("invalid ephemeral key") from None
     key = _sb_key(shared, eph_pk, x25519_public(recipient_sk), context)
-    return aead.open_sealed(key, body, header + eph_pk + context)
+    return aead.open_sealed(key, body, header + eph_pk + context, allow_fallback=allow_fallback)
 
 
 def _ev_aad(context, part):
     return EV_MAGIC + bytes([VERSION]) + part + b"|" + context
 
 
-def envelope_encrypt(kek: bytes, data: bytes, context: bytes = b"") -> bytes:
+def envelope_encrypt(kek: bytes, data: bytes, context: bytes = b"", *, allow_fallback: bool = False) -> bytes:
     dek = secrets.token_bytes(32)
-    wrapped = aead.seal(kek, dek, _ev_aad(context, b"dek"))
-    body = aead.seal(dek, data, _ev_aad(context, b"data"))
+    wrapped = aead.seal(kek, dek, _ev_aad(context, b"dek"), allow_fallback=allow_fallback)
+    body = aead.seal(dek, data, _ev_aad(context, b"data"), allow_fallback=allow_fallback)
     return EV_MAGIC + bytes([VERSION]) + struct.pack(">H", len(wrapped)) + wrapped + body
 
 
@@ -63,15 +63,15 @@ def _ev_split(blob):
     return wrapped, body
 
 
-def envelope_decrypt(kek: bytes, blob: bytes, context: bytes = b"") -> bytes:
+def envelope_decrypt(kek: bytes, blob: bytes, context: bytes = b"", *, allow_fallback: bool = False) -> bytes:
     wrapped, body = _ev_split(blob)
-    dek = aead.open_sealed(kek, wrapped, _ev_aad(context, b"dek"))
-    return aead.open_sealed(dek, body, _ev_aad(context, b"data"))
+    dek = aead.open_sealed(kek, wrapped, _ev_aad(context, b"dek"), allow_fallback=allow_fallback)
+    return aead.open_sealed(dek, body, _ev_aad(context, b"data"), allow_fallback=allow_fallback)
 
 
-def rewrap_envelope(old_kek: bytes, new_kek: bytes, blob: bytes, context: bytes = b"") -> bytes:
+def rewrap_envelope(old_kek: bytes, new_kek: bytes, blob: bytes, context: bytes = b"", *, allow_fallback: bool = False) -> bytes:
     """KEK rotation: re-wrap the DEK under new_kek without re-encrypting the data."""
     wrapped, body = _ev_split(blob)
-    dek = aead.open_sealed(old_kek, wrapped, _ev_aad(context, b"dek"))
-    w2 = aead.seal(new_kek, dek, _ev_aad(context, b"dek"))
+    dek = aead.open_sealed(old_kek, wrapped, _ev_aad(context, b"dek"), allow_fallback=allow_fallback)
+    w2 = aead.seal(new_kek, dek, _ev_aad(context, b"dek"), allow_fallback=allow_fallback)
     return EV_MAGIC + bytes([VERSION]) + struct.pack(">H", len(w2)) + w2 + body

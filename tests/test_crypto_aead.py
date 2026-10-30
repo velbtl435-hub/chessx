@@ -15,7 +15,10 @@ class TestAEAD(unittest.TestCase):
     def test_pure_and_backend_agree(self):
         k, n, pt, aad = os.urandom(32), os.urandom(12), os.urandom(50), b"ctx"
         with mock.patch.object(A, "_CC", None), mock.patch.object(A, "_AESGCM", None):
-            p1, p2 = A.chacha20_poly1305_encrypt(k, n, pt, aad), A.aes_gcm_encrypt(k, n, pt, aad)
+            with self.assertWarns(A.InsecureFallbackWarning):
+                p1 = A.chacha20_poly1305_encrypt(k, n, pt, aad, allow_fallback=True)
+            with self.assertWarns(A.InsecureFallbackWarning):
+                p2 = A.aes_gcm_encrypt(k, n, pt, aad, allow_fallback=True)
         self.assertEqual(p1, A.chacha20_poly1305_encrypt(k, n, pt, aad))
         self.assertEqual(p2, A.aes_gcm_encrypt(k, n, pt, aad))
 

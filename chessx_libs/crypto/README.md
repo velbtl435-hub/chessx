@@ -27,6 +27,10 @@ Use these for stored passwords; use `kdf.argon2id` only to derive raw keys (e.g.
 `seal(key, pt, aad=b"", alg="chacha20-poly1305"|"aes-256-gcm")` -> `CX|ver|alg|nonce12|ct|tag16` (random nonce,
 header authenticated), `open_sealed(key, blob, aad)` raises `DecryptError`. Rotate a key before ~2^32 messages.
 
+**Strict by default (CRY-01):** with `CRYPTO_BACKEND == "pure"` every AEAD call (and envelope/session/keystore on top)
+raises `AEADUnavailable`. Pass `allow_fallback=True` to use the slow, non-constant-time pure-Python code; each such
+call emits `InsecureFallbackWarning` (a `RuntimeWarning`). The raw `chacha.py`/`aesgcm.py` modules stay pure (reference/KATs).
+
 ## Stored data (envelope.py)
 `seal_box(recipient_pk, data, context)` / `open_box(recipient_sk, blob, context)`: ephemeral X25519 + HKDF-SHA256 + AEAD,
 versioned `CXSB` header, `context` bound as AAD (anonymous sender; no sender authentication -- sign separately if needed).

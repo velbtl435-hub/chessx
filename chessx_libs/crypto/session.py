@@ -20,7 +20,8 @@ class HandshakeError(ValueError):
 
 
 class Session:
-    def __init__(self, send_key, recv_key, session_id):
+    def __init__(self, send_key, recv_key, session_id, *, allow_fallback: bool = False):
+        self.allow_fallback = allow_fallback
         self._send, self._recv = bytearray(send_key), bytearray(recv_key)
         self.session_id = session_id
         self.send_counter = 0
@@ -36,7 +37,7 @@ class Session:
         self.send_counter += 1
         nonce = b"\0\0\0\0" + struct.pack(">Q", c)
         return MSG + bytes([VERSION]) + struct.pack(">Q", c) + aead.chacha20_poly1305_encrypt(
-            bytes(self._send), nonce, plaintext, self._aad(c, aad))
+            bytes(self._send), nonce, plaintext, self._aad(c, aad), allow_fallback=self.allow_fallback)
 
     def decrypt(self, frame: bytes, aad: bytes = b"") -> bytes:
         """Strict in-order delivery: replayed, dropped-ahead or reordered frames are rejected."""
@@ -47,7 +48,7 @@ class Session:
             raise aead.DecryptError(f"replayed or out-of-order frame (got {c}, expected {self.recv_counter})")
         try:
             pt = aead.chacha20_poly1305_decrypt(bytes(self._recv), b"\0\0\0\0" + frame[4:12], frame[12:],
-                                                self._aad(c, aad))
+                                                self._aad(c, aad), allow_fallback=self.allow_fallback)
         except ValueError:
             raise aead.DecryptError("authentication failed") from None
         self.recv_counter += 1
@@ -60,7 +61,8 @@ class Session:
 
 
 class Handshake:
-    def __init__(self, id_sk: bytes, id_pk: bytes, peer_id_pk: bytes, initiator: bool):
+    def __init__(self, id_sk: bytes, id_pk: bytes, peer_id_pk: bytes, initiator: bool, *, allow_fallback: bool = False):
+        self.allow_fallback = allow_fallback
         if ed25519_public(id_sk) != id_pk:
             raise ValueError("identity keypair mismatch")
         self.id_sk, self.id_pk, self.peer, self.initiator = id_sk, id_pk, peer_id_pk, initiator
@@ -113,7 +115,7 @@ class Handshake:
             raise HandshakeError("bad ephemeral key") from None
         self._state = "done"
         s, r, sid = self._keys(shared, th)
-        return M3 + bytes([VERSION]) + ed25519_sign(self.id_sk, b"init" + th), Session(s, r, sid)
+        return M3 + bytes([VERSION]) + ed25519_sign(self.id_sk, b"init" + th), Session(s, r, sid, allow_fallback=self.allow_fallback)
 
     def complete(self, m3: bytes) -> Session:
         self._expect("sent2")
@@ -122,4 +124,4 @@ class Handshake:
         if not ed25519_verify(self.peer, b"init" + self._th, m3[5:]):
             raise HandshakeError("initiator signature invalid (wrong identity or MITM)")
         self._state = "done"
-        return Session(*self._keys(self._shared, self._th))
+        return Session(*self._keys(self._shared, self._th), allow_fallback=self.allow_fallback)
