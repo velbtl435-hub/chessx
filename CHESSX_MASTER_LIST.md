@@ -1,5 +1,5 @@
 # ChessX - Master Task List & Analysis
-# Version 0.5.1 | Updated 10/30/2026
+# Version 0.5.2 | Updated 10/30/2026
 
 ---
 
@@ -9,6 +9,7 @@
 |------|------|--------|
 | S+ | Multi-engine search with fusion | Core of the product, already works |
 | S+ | Square board with expansion | Unique visual differentiator |
+| S+ | Continuous task scheduler (daily/minute/second, never idle) | Operational backbone |
 | S | DuckDuckGo real adapter | No key, free, essential |
 | S | Brave Search API adapter | 2000 req/month free |
 | S | Save JSON/CSV | Basic persistence, ready |
@@ -22,6 +23,7 @@
 | A | Boot sequence (Linux-style, 5-7s, ASCII, knight logo) | Launch identity |
 | A | Base conversion tools (octal, hex, binary, hex reader, binary reader) | Math utility suite |
 | A | Periodic code audit (bugs, security, optimization, modularization, scalability) | Quality assurance |
+| A | End-to-end encryption + advanced cybersecurity | Trust and safety core |
 | B | Charts (pie, bar, all types) | Rich visual but complex |
 | B | Information cross-referencing | Differentiating feature |
 | B | Introductory explanatory text | Onboarding |
@@ -39,6 +41,8 @@
 | B | Reverse search / detective mode for file origins | Provenance tracking |
 | B | Program reversal (reconstruct how programs were built) | Deep analysis |
 | B | OS-like architecture: kernel, daemons, shell, software suite | Long-term vision |
+| B | Anonymity layer (VPS, VPN, proxy, DNS) | Privacy infrastructure |
+| B | 2FA (two-factor authentication) | Account security |
 | C | Desktop version (Tauri/Electron) | Depends on web being stable |
 | C | Final custom name | Cosmetic |
 | C | Emojis in terminal | Depends on user's terminal |
@@ -136,7 +140,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 - ChessX is one tool within Artware
 - User: SuperGrok, borrowed ChatGPT, GitHub velbtl435-hub
 - Start date: 10/30/2026
-- Repo: github.com/velbtl435-hub/chessx (commit aaf39929)
+- Repo: github.com/velbtl435-hub/chessx (commit 7fe55585)
 
 ---
 
@@ -190,6 +194,10 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Program reversal | Not started |
 | Periodic code audit | Scheduled (recurring) |
 | OS architecture (kernel/daemons/shell) | Vision, not started |
+| Continuous task scheduler | Not started |
+| E2E encryption | Not started |
+| Anonymity layer (VPS/VPN/proxy/DNS) | Not started |
+| 2FA | Not started |
 
 ---
 
@@ -249,3 +257,40 @@ ChessX will evolve into a mini operating system tailored to its purpose:
 - **Software suite**: all ChessX tools as "applications" running on the system
 - Built incrementally over time, module by module
 - Each subsystem maps to a real OS concept but scoped to ChessX's domain
+
+---
+
+## 17. CONTINUOUS TASK SCHEDULER (USER REQUEST)
+
+- Every task should be doable daily
+- Tasks should also be executable every minute
+- Minimal tasks per second where possible
+- System must NEVER be idle unless strictly necessary
+- Idle state only allowed when explicitly required by design
+
+---
+
+## 18. CYBERSECURITY & PRIVACY SUITE (USER REQUEST)
+
+### 18.1 End-to-End Encryption
+- E2E encryption for all stored data and communications
+- Modern, market-leading cryptographic standards
+- Key management with secure storage
+
+### 18.2 Anonymity Infrastructure
+- VPS support for routing
+- VPN integration
+- Proxy chaining
+- DNS privacy (DoH/DoT)
+- Full traffic anonymization pipeline
+
+### 18.3 Advanced Security
+- Top-of-market cybersecurity practices
+- Focus on cryptography as primary defense
+- 2FA (two-factor authentication) for all accounts and access
+- Regular penetration testing mindset
+
+### 18.4 Notes
+- Privacy features are core, not optional
+- 2FA applies to ChessX accounts and any integrated services
+- Anonymity layer should be toggleable but on by default
