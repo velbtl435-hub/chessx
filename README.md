@@ -19,6 +19,22 @@ python3 chessx.py
 
 Python 3.8 or higher. No external dependencies.
 
+### Optional packages (pinned, hash-locked)
+
+`requirements.txt` and `requirements-optional.txt` pin exact tested versions (`==`).
+`requirements.lock` and `requirements-optional.lock` add every transitive dependency with
+SHA-256 hashes (generated with `pip-compile --generate-hashes`, Python 3.13). For a
+verified install:
+
+```bash
+pip install --require-hashes -r requirements.lock
+pip install --require-hashes -r requirements-optional.lock   # heavy reversing extras
+```
+
+To refresh: edit the pins, then
+`pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.lock requirements.txt`
+(same for the optional file) and check with `pip-audit -r requirements.lock`.
+
 ## Commands
 
 | Key | Action |

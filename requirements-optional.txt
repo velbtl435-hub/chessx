@@ -1,14 +1,14 @@
 # OPTIONAL: reversing extras. ChessX works without them.
-capstone>=5.0          # disassembly backend (chessx_libs/reversing/disasm.py)
-pyelftools>=0.31       # ELF parsing
-r2pipe>=2.1            # needs the radare2 binary installed separately
-python-magic>=0.4.27   # needs libmagic on the system
-lief>=0.14             # PE/ELF/Mach-O parsing
-angr>=9.2              # heavy (hundreds of MB), symbolic execution
-ppdeep>=20200505       # ssdeep-style fuzzy hashing (pure Python)
-py-tlsh>=4.7           # TLSH locality-sensitive hashing
+capstone==5.0.9        # disassembly backend (chessx_libs/reversing/disasm.py)
+pyelftools==0.33       # ELF parsing
+r2pipe==2.1.0          # needs the radare2 binary installed separately
+python-magic==0.4.27   # needs libmagic on the system
+lief==1.0.0            # PE/ELF/Mach-O parsing
+angr==10.0.5           # heavy (hundreds of MB), symbolic execution
+ppdeep==20260221       # ssdeep-style fuzzy hashing (pure Python)
+py-tlsh==5.0.0         # TLSH locality-sensitive hashing
 # crypto: 2FA QR + OS keyring
-qrcode[pil]>=7.4
-keyring>=24
+qrcode[pil]==8.2
+keyring==25.7.0
 # reversing: optional YARA for triage
-yara-python>=4.3
+yara-python==4.5.4

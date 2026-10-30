@@ -5,24 +5,24 @@
 #   pip install -r requirements-optional.txt   # heavy reversing extras
 
 # --- required: voice / STT ---
-pyttsx3
-vosk
+pyttsx3==2.99
+vosk==0.3.45
 # --- required: search / scraping ---
-ddgs
-requests
-beautifulsoup4
-curl_cffi
-scrapy
-playwright        # then run: python -m playwright install chromium
+ddgs==9.16.1
+requests==2.34.2
+beautifulsoup4==4.15.0
+curl_cffi==0.17.0
+scrapy==2.19.0
+playwright==1.64.1 # then run: python -m playwright install chromium
 # --- required: crypto ---
-cryptography
-argon2-cffi
+cryptography==50.0.2
+argon2-cffi==25.1.0
 # --- required: terminal UI ---
-rich
-asciimatics
-urwid
+rich==15.0.0
+asciimatics==1.15.0
+urwid==5.0.1
 # --- required: media / numeric ---
-pillow
-numpy
+pillow==13.0.0
+numpy==2.5.4
 # --- required: math engine (chessx_libs.mathx) ---
-sympy
+sympy==1.14.0
