@@ -52,12 +52,49 @@ class TestRetroMusic(unittest.TestCase):
         self.assertEqual(p["pulse1"][0], {"n": 76})
         self.assertIsNone(p["pulse1"][1])
         self.assertEqual(p["pulse2"][0]["arp"], [0, 4, 7])
-        self.assertEqual(p["noise"][0], {"drum": "k"})
+        self.assertEqual(p["dpcm"][0], {"drum": "k"})
+        self.assertEqual(p["noise"][4], {"drum": "s"})
         self.assertEqual(M.parse_cell("C#4:u5:@9:w0:v"), {"n": 61, "slide": 5, "vol": 1.0, "duty": 0.125, "vib": 0.01})
         self.assertEqual(M.parse_cell("---"), {"off": True})
         for bad in ("pattern A\npulse1 C4", "chip nes\npattern A\nbogus C4", "chip nes\npattern A\npulse1 C4:z"):
             with self.assertRaises(ValueError):
                 M.parse_song(bad)
+
+    def test_extra_channels_filled(self):
+        for c, names in (("opl", ["opl7", "opl8", "opl9"]), ("snes", ["dsp7", "dsp8"]),
+                         ("ps1", [f"spu{i}" for i in range(7, 25)])):
+            s = M.compose(c, "title", 1, bars=2)
+            for n in names:
+                self.assertTrue(any(x is not None for x in s.patterns["A"][n]), (c, n))
+        ps = {ch.name: ch for ch in M.layout("ps1")}
+        self.assertNotEqual(ps["spu18"].detune, ps["spu19"].detune)
+        self.assertNotEqual(ps["spu18"].pan, ps["spu19"].pan)
+        s = M.compose("nes", "title", 1, bars=1)
+        dp = s.patterns["A"]["dpcm"]
+        self.assertTrue(any(x and x.get("drum") == "k" for x in dp))
+
+    def test_per_chip_drums_differ(self):
+        self.assertEqual(set(M.DRUM_KITS), set(CHIPS))
+        self.assertEqual(M.DRUM_KITS["nes"]["k"]["voice"], "dpcm")
+        self.assertTrue(M.DRUM_KITS["sn"]["k"]["periodic"])
+        kicks = {c: M.render_song(M.parse_song(f"chip {c}\npattern A\n{M.layout(c)[[ch.kind for ch in M.layout(c)].index('drums')].name} k . . .\n"), crush=False)
+                 for c in ("gb", "sid", "fm", "opl")}
+        self.assertEqual(len({round(float(np.abs(x).mean()), 4) for x in kicks.values()}), 4)
+
+    def test_sid_filter_sweep(self):
+        s = M.compose("sid", "title", 1, bars=1)
+        f = {c.role: c.opts for c in s.channels}["bass"]["filter"]
+        self.assertNotEqual(f["from"], f["to"])
+        x = M.render_song(s)
+        self.assertLessEqual(float(np.abs(x).max()), 0.9)
+
+    def test_loop_option(self):
+        a = events.render("retro.gb.music.victory", seed=1)
+        b = events.render("retro.gb.music.victory", seed=1, loops=2)
+        c = events.render("retro.gb.music.victory", seed=1, loop=True)
+        self.assertAlmostEqual(len(b) / len(a), 2, delta=0.05)
+        self.assertTrue(np.array_equal(b, c))
+        self.assertLessEqual(float(np.abs(b).max()), 0.9)
 
     def test_stereo_and_sid_ring_sync(self):
         st = M.render_song(M.compose("ps1", "title", 3, bars=1), stereo_out=True)
