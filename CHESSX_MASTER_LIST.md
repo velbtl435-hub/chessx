@@ -549,3 +549,26 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 25.5 Rank
 - Class S — PRIORITY_LIST.md item #23
+
+---
+
+## 27. RETRO VIDEO GAME SOUNDS (USER REQUEST 10/30/2026)
+
+### 27.1 Styles
+- 8-bit chiptune sound effects (NES/Game Boy style: pulse, triangle, noise, DPCM-like)
+- 16-bit Nintendo era (SNES-style sample-less wavetable/BRR-like timbres, echo/reverb)
+- 32-bit era (PlayStation/Saturn-style richer synth, reverb, stereo)
+
+### 27.2 Sound chips emulated in software
+- SID (Commodore 64): 3 voices, pulse/saw/triangle/noise, ring mod, sync, resonant filter
+- PSG (AY-3-8910 / SN76489): square voices + noise, envelopes
+- FM (YM2612 / OPL2-OPL3): operator-based FM synthesis
+
+### 27.3 Implementation
+- Everything generated procedurally with numpy + scipy; NO samples
+- Builds on the section 24 DSP core in chessx_libs/sounds/ (oscillators, envelopes, filters)
+- Event library: coin, jump, hit, power-up, 1-up, menu select, game over, chess move/capture/check/mate
+
+### 27.4 Rank
+- Class A
+
