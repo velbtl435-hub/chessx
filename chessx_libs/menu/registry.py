@@ -133,8 +133,13 @@ def _stt(app, ask):
 
 def _sounds(app, ask):
     s = _imp("sounds")
-    fx = ask("effect %s" % sorted(s.EFFECTS)) or "success"
-    s.play(fx)
+    lister = getattr(s, "list_events", None)
+    names = lister() if lister else sorted(s.EFFECTS)
+    fx = ask("effect %s" % names) or "success"
+    try:
+        s.play(fx)
+    except getattr(s, "UnknownSound", KeyError) as e:
+        return str(e.args[0]) if e.args else str(e)
     return "played %s via %s" % (fx, s.PLAYER)
 
 def _windows(app, ask): return _imp("windows").Layout(60, 10).render()
@@ -187,8 +192,12 @@ def _selftest(app, ask):
 def _browser(app, ask):
     b = _imp("browser")
     url = ask("url (empty = demo page)") or None
-    # hands control to the browser's own loop; it reads from the same stdin (q exits)
-    b.run(url, input_fn=input)
+    import sys
+    # TTY: real key loop; piped/non-TTY: line prompt reading the same stdin (q exits)
+    if sys.stdin.isatty():
+        b.run(url, mode="keys")
+    else:
+        b.run(url, input_fn=input, mode="prompt")
     return ""
 
 def _pixelart(app, ask):
