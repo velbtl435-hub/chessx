@@ -681,6 +681,70 @@ def parse_cell(tok):
     return cell
 
 
+# ---------------------------------------------------------------- per-channel instruments ('inst' lines)
+_TABLES = ("strings", "brass", "organ", "bell", "bass", "pad")
+INST_KEYS = {  # chip -> {key: allowed (tuple of strings) | "num" | "nums" (comma list)}
+    "nes": {"voice": ("pulse", "triangle", "noise", "dpcm"), "duty": "num"},
+    "gb": {"voice": ("pulse", "wave", "noise"), "duty": "num"},
+    "sid": {"shape": ("saw", "pulse", "triangle", "noise"), "pw": "num", "pwm": "num", "ring": "num", "sync": "num",
+            "combined": "num"},
+    "ay": {"hw_env": "num", "env_hz": "num"},
+    "sn": {"periodic": "num"},
+    "fm": {"algorithm": "num", "feedback": "num", "ratios": "nums", "levels": "nums", "decays": "nums"},
+    "opl": {"ws": "num", "mod": "num", "mdecay": "num", "ratios": "nums"},
+    "snes": {"table": _TABLES},
+    "ps1": {"table": _TABLES},
+}
+INST_COMMON = {"vol": "num", "pan": "num", "detune": "num", "octave": "num", "hits": "hits", "decay": "num",
+               "env": "num", "vib": "num", "vib_hz": "num"}
+_CHANNEL_ATTRS = ("vol", "pan", "detune", "octave", "hits")
+
+
+def _inst_value(chip, key, raw):
+    spec = INST_KEYS.get(chip, {}).get(key, INST_COMMON.get(key))
+    if spec is None:
+        allowed = sorted(set(INST_KEYS.get(chip, {})) | set(INST_COMMON))
+        raise ValueError(f"unknown instrument key {key!r} for chip {chip}; use {allowed}")
+    try:
+        if spec == "num":
+            return float(raw)
+        if spec == "nums":
+            return tuple(float(v) for v in raw.split(","))
+    except ValueError:
+        raise ValueError(f"instrument key {key!r} needs a number{' list' if spec == 'nums' else ''}, got {raw!r}") \
+            from None
+    if spec == "hits":
+        if not raw or set(raw) - set("kshtc"):
+            raise ValueError(f"hits must be drum letters from 'kshtc', got {raw!r}")
+        return raw
+    if raw not in spec:
+        raise ValueError(f"instrument key {key!r} must be one of {list(spec)}, got {raw!r}")
+    return raw
+
+
+def apply_inst(song, args):
+    """'inst <channel> [tone|drums] key=val ...': set the channel's kind and chip voice options (validated per chip),
+    or its vol/pan/detune/octave/hits. Comma lists become tuples. Errors raise ValueError."""
+    if not args:
+        raise ValueError("inst needs a channel: inst <channel> [tone|drums] key=val ...")
+    ch = next((c for c in song.channels if c.name == args[0]), None)
+    if ch is None:
+        raise ValueError(f"unknown channel {args[0]!r} for chip {song.chip}; use {[c.name for c in song.channels]}")
+    for tok in args[1:]:
+        if "=" not in tok:
+            if tok not in ("tone", "drums"):
+                raise ValueError(f"inst kind must be 'tone' or 'drums', got {tok!r}")
+            ch.kind = tok
+            continue
+        key, raw = tok.split("=", 1)
+        val = _inst_value(song.chip, key, raw)
+        if key in _CHANNEL_ATTRS:
+            setattr(ch, key, int(val) if key == "octave" else val)
+        else:
+            ch.opts[key] = val
+    return ch
+
+
 def parse_song(text):
     """Compact text song:
 
@@ -695,6 +759,8 @@ def parse_song(text):
         ...
         order A B A
         loop yes
+
+        inst pulse1 duty=0.125 vol=0.8   # per-channel instrument (see INST_KEYS / INST_COMMON)
 
     Channel names come from the chip layout (see LAYOUTS); omitted channels stay silent. '#' starts a comment.
     """
@@ -717,6 +783,9 @@ def parse_song(text):
                 raise ValueError("'rhythm' must come before any pattern")
             on = (rest or ["on"])[0].lower() in ("on", "yes", "1", "true")
             song.rhythm, song.channels = on, layout(song.chip, rhythm=on)
+            continue
+        if key == "inst":
+            apply_inst(song, rest)
             continue
         if key == "pattern":
             pat = song.patterns.setdefault(rest[0], {})

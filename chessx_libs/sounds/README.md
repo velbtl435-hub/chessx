@@ -130,6 +130,8 @@ uses bit 8 of the ch8 modulator phase XOR the 23-bit noise LFSR, HH/CYM build th
 `seamless=True` return exactly the song length with the echo/reverb tail folded back onto the start (`fold_tail`),
 so the clip loops end-to-end with the tail continuing across the loop point. Default keeps the appended tail.
 
-## Backlog (retro)
-
-* Per-channel instruments in the compact text format (e.g. `inst pulse1 duty=0.125`).
+### Per-channel instruments (text format)
+`inst <channel> [tone|drums] key=val ...` sets a channel's instrument; keys are validated per chip (`INST_KEYS`:
+nes/gb voice,duty; sid shape,pw,pwm,ring,sync,combined; ay hw_env,env_hz; sn periodic; fm algorithm,feedback,
+ratios,levels,decays; opl ws,mod,mdecay,ratios; snes/ps1 table) plus common vol,pan,detune,octave,hits,decay,env,
+vib,vib_hz. Comma lists become tuples (`ratios=1,2.5`). Bad channels, keys or values raise ValueError.

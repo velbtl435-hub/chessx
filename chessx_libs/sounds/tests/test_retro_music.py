@@ -181,6 +181,25 @@ class TestRetroMusic(unittest.TestCase):
         e = events.render("retro.ps1.music.title", rate=22050, seamless=True)
         self.assertEqual(len(e), int(round(M.compose("ps1", "title", 0, 2).duration() * 22050)))
 
+    def test_text_inst_lines(self):
+        t = M.parse_song("chip nes\ninst pulse1 duty=0.125 vol=0.5 pan=-0.3\ninst pulse2 tone voice=triangle "
+                         "octave=-1\npattern A\npulse1 C5 E5\npulse2 C4 .\n")
+        p1, p2 = t.channels[0], t.channels[1]
+        self.assertEqual((p1.opts["duty"], p1.vol, p1.pan), (0.125, 0.5, -0.3))
+        self.assertEqual((p2.opts["voice"], p2.octave), ("triangle", -1))
+        self.assertEqual(M._channel_segments(t, p1, 1)[0]["duty"], M._duty("nes", 0.125))
+        self.assertLessEqual(float(np.abs(M.render_song(t, rate=22050)).max()), 0.9)
+        f = M.parse_song("chip fm\ninst fm1 ratios=1,2.5 algorithm=4\n")
+        self.assertEqual(f.channels[0].opts["ratios"], (1.0, 2.5))
+        n = M.parse_song("chip nes\ninst noise drums hits=kt\n")
+        self.assertEqual((n.channels[3].kind, n.channels[3].hits), ("drums", "kt"))
+        for bad in ("inst nope duty=1", "inst pulse1 ws=1", "inst pulse1 duty=x", "inst pulse1 voice=saw",
+                    "inst pulse1 hits=kz", "inst pulse1 weird", "inst"):
+            with self.assertRaises(ValueError, msg=bad):
+                M.parse_song("chip nes\n" + bad + "\n")
+        with self.assertRaises(ValueError):
+            M.parse_song("chip fm\ninst fm1 ratios=1,a\n")
+
     def test_loop_option(self):
         a = events.render("retro.gb.music.victory", seed=1)
         b = events.render("retro.gb.music.victory", seed=1, loops=2)
