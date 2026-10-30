@@ -41,3 +41,8 @@ Notes: `int64_t` crosses the JS boundary as `BigInt`; re-create typed-array view
 may grow memory; serve `.wasm` as `application/wasm` (Vercel does by default). Expected values:
 `crc32("123456789") === 0xcbf43926`, `fuse([[1,10n],[2,5n],[1,3n],[3,7n]])` → `[[1,13n],[3,7n],[2,5n]]`.
 Emscripten builds (`make emscripten`) instead ship their own JS glue (`cx_<mod>()` factory + `cwrap`).
+
+## Capstone (reversing) — lazy-load only
+`capstone.reactor.wasm` is ~4.5 MB (~614 KB gzip). **Do not** fetch it at boot with hello_fusion/search.
+Load only when the reversing UI opens: dynamic `import()` / on-demand `fetch` + `instantiateStreaming`,
+cache the Promise. See `c/capstone/README.md` § *lazy-load obrigatório*.

@@ -18,8 +18,22 @@ Owner: Reversing Engineer (Team 1). **Static disassembly only:** bytes in, text 
 
 ## Size / arch set
 Even restricted to x86, ARM, ARM64, MIPS and RISC-V the build is ~4.5 MB `.wasm` (-O2; -Oz only saves
-~25 KB), ~600 KB gzip: it is decoder tables. `CAPSTONE_X86_REDUCE` would shrink x86 but drops
+~25 KB), ~614 KB gzip: it is decoder tables. `CAPSTONE_X86_REDUCE` would shrink x86 but drops
 AVX/AVX-512 etc. and breaks parity with pip capstone, so it is not used.
+
+## lazy-load obrigatório (browser)
+O `.wasm` do capstone (~**4.5 MB** / ~**614 KB** gzip) **não pode** entrar no boot do web/.
+Carregar **somente** quando o módulo de reversing for aberto pelo usuário:
+
+- **fetch-on-demand** / **dynamic `import()`**: o chunk JS do reversing (ou um `loadCapstone()`
+  async) faz `fetch("/wasm/capstone.reactor.wasm")` + `WebAssembly.instantiateStreaming` na primeira
+  abertura do painel; cachear a Promise no módulo para reuso.
+- **Nunca** no bundle inicial, no `layout`/`_app`, nem em `Promise.all` de boot com hello_fusion/search.
+- Desktop: `chessx_libs/native/capstone.py` já é lazy — o `.so` só é `dlopen` no primeiro `disasm()` /
+  `_lib()`; `import chessx_libs.native` **não** carrega capstone (ver `__getattr__` em
+  `native/__init__.py`). Não há glue JS de capstone neste repo ainda; quando web/ adicionar, seguir
+  o padrão acima (receita base em `c/WEB.md`).
+
 
 Python: `chessx_libs/native/capstone.py` (`disasm()`, `backend()`); `reversing.disasm.disasm_x86` uses
 it only when pip capstone is missing (same output format, public API unchanged).

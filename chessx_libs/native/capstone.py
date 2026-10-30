@@ -1,5 +1,6 @@
 """Static disassembly through the vendored capstone C module (c/capstone, cx_disasm shim).
 
+Lazy: libcx_capstone is dlopen'd only on the first disasm()/_lib() call (never at import).
 Backend order: native ctypes (libcx_capstone, built with c/capstone/module.mk) -> pip `capstone`
 -> pure Python (x86 only, reversing's built-in decoder). Bytes in, text out: nothing is executed.
 Archs in the native/wasm build: x86, ARM, ARM64, MIPS, RISC-V (see c/capstone/README.md)."""
