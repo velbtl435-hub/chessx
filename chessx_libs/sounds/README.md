@@ -90,3 +90,24 @@ from chessx_libs.sounds.retro import render_sfx; x = render_sfx("fm", "explosion
 * SID music uses the resonant filter with a per-style cutoff sweep (bass; band-pass lead in chess_thinking).
 * Looping: `render_music(..., loops=N)` / `loop=True` (=2 passes); events too: `events.render("retro.nes.music.title", loops=3)`.
   Default stays a single pass.
+
+### Retro convenience API (`from chessx_libs.sounds import play_retro, render_retro, list_retro`)
+
+| call | returns |
+|---|---|
+| `list_retro()` | `{chip: {"sfx": ["coin", ...], "music": ["music.battle", ..., "music.demo"]}}` |
+| `list_retro("nes")` | `{"sfx": [...], "music": [...]}` |
+| `render_retro(chip, name, **kw)` | mono float array (peak <= 0.89); kw: `seed`, `rate`, music: `bars`, `loops`, `loop` |
+| `play_retro(chip, name, **kw)` | player name or `"noop"` (muted / no player / playback error), like `play()` |
+
+`name` is an sfx (`"coin"`) or music (`"music.battle"`) → event `retro.<chip>.<name>`.
+Unknown chip → `UnknownSound` listing valid chips; unknown name → `UnknownSound` listing that chip's names.
+Without numpy: `list_retro(...)` returns `{}` (also for a chip argument) and `play_retro`/`render_retro` raise `MissingDependency`.
+
+## Backlog (retro)
+
+* Global SID filter over all 3 voices via `SID.voices3(filter=...)` (now per-channel filter sweeps).
+* Filter/echo automation over time (per row/pattern), not one sweep or fixed echo per channel.
+* True OPL rhythm mode (BD/SD/TT/CY/HH from shared operators) instead of rhythm-style kit.
+* Loop tail crossfade (echo/reverb tail wrapping into the next pass) for seamless loops.
+* Per-channel instruments in the compact text format (e.g. `inst pulse1 duty=0.125`).
