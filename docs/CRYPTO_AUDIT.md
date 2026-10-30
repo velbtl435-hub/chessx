@@ -14,19 +14,39 @@ Autor: Team 1 / crypto. Worktree `chessx-t1crypto`, base `origin/main` em 2026-1
 - Cada achado foi revisado à mão. O dono saiu do diretório e do prefixo dos commits (`git log -- <arquivo>`).
 
 ## Resumo
-| # | Achado | Arquivo:linha | Sev. | Dono | Status |
-|---|---|---|---|---|---|
-| 1 | Comparação do segredo de cron com `!==` (tempo não constante) | web/app/api/refresh/route.ts:6 | média | web | aberto |
-| 2 | Endpoint de refresh fica aberto (fail-open) quando `CRON_SECRET` não existe | web/app/api/refresh/route.ts:5-6 | média | web | aberto |
-| 3 | CSP do Tauri desativada (`"csp": null`) | desktop/src-tauri/tauri.conf.json:14 | média | desktop | aberto |
-| 4 | `tempfile.mktemp` (corrida TOCTOU/symlink) | chessx_libs/voice/tts.py:203, :280 | média | voice | aberto |
-| 5 | `tempfile.mktemp` | chessx_libs/voice/stt.py:85, :111 | média | voice | aberto |
-| 6 | `tempfile.mktemp` no self-test | chessx.py:197 | baixa | Coder (Team 1) | aberto |
-| 7 | `marshal.load` em `.pyc` vindo do usuário | chessx_libs/reversing/disasm.py:24 | baixa | Reversing (Team 1) | aberto |
-| 8 | Chave e nonce zerados no self-test ChaCha20 | chessx.py:179-180 | baixa (informativo) | Coder (Team 1) | aberto |
-| 9 | `random.Random` (Mersenne Twister) na rotação de fingerprint | chessx_libs/crypto/netsec.py:72 | baixa | crypto (Team 1) | corrigido com 8a072c2 |
+Status atualizado em 2026-10-30 (tarde), após o [AUDIT_REPORT.md](../AUDIT_REPORT.md) (DOC-01). Cada correção foi conferida no código de `main`, não só pela mensagem de commit.
 
-Total: 0 alta, 5 média, 4 baixa.
+| # | Achado | Arquivo:linha (original) | Sev. | Dono | Status |
+|---|---|---|---|---|---|
+| 1 | Comparação do segredo de cron com `!==` (tempo não constante) | web/app/api/refresh/route.ts:6 | média | web | corrigido (144d4c4) |
+| 2 | Endpoint de refresh aberto (fail-open) sem `CRON_SECRET` | web/app/api/refresh/route.ts:5-6 | média | web | corrigido (144d4c4) |
+| 3 | CSP do Tauri desativada (`"csp": null`) | desktop/src-tauri/tauri.conf.json:14 | média | desktop | corrigido (f56bc10), ver nota |
+| 4 | `tempfile.mktemp` | chessx_libs/voice/tts.py:203, :280 | média | voice | corrigido (aee1f8b) |
+| 5 | `tempfile.mktemp` | chessx_libs/voice/stt.py:85, :111 | média | voice | corrigido (aee1f8b) |
+| 6 | `tempfile.mktemp` no self-test | chessx.py:197 | baixa | Coder (Team 1) | corrigido (035e7a0) |
+| 7 | `marshal.load` em `.pyc` do usuário | chessx_libs/reversing/disasm.py:24 | baixa | Reversing (Team 1) | corrigido (1f29b9a) |
+| 8 | Chave/nonce zerados no self-test ChaCha20 | chessx.py:179-180 | baixa (info) | Coder (Team 1) | corrigido (035e7a0): comentário de vetor fixo |
+| 9 | `random.Random` na rotação de fingerprint | chessx_libs/crypto/netsec.py:72 | baixa | crypto (Team 1) | corrigido (8a072c2) |
+
+Placar: 9 de 9 corrigidos, 0 abertos.
+
+### Revisão das correções (o que foi conferido)
+- **#1/#2 (144d4c4).** `route.ts` agora usa `timingSafeEqual` sobre `Buffer`s e responde 503 quando falta `CRON_SECRET` (fail-closed). Ressalva menor: o `if (ab.length !== bb.length) return false` sai cedo e assim vaza o *tamanho* de `Bearer <segredo>`. O conteúdo não vaza, e o tamanho de um segredo aleatório não ajuda o atacante. Aceitável. Para zerar até isso, basta comparar `sha256(a)` com `sha256(b)` (tamanho fixo de 32 B).
+- **#3 (f56bc10).** CSP definida: `default-src`/`script-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`, `connect-src` só `self` e IPC. `style-src 'self' 'unsafe-inline'` vem junto com `dangerousDisableAssetCspModification: ["style-src"]`. **Aceitável**: o xterm.js (`desktop/ui/vendor/xterm.js`) injeta estilos inline em tempo de execução, e se o Tauri acrescentasse nonce/hash ao `style-src` o `'unsafe-inline'` seria ignorado e o terminal quebraria. O risco que sobra é só injeção de CSS, porque scripts continuam restritos a `'self'`. Nota extra: `withGlobalTauri: true` expõe `window.__TAURI__` ao webview e amplia o impacto de um eventual XSS. Não é regressão, fica como sugestão ao desktop.
+- **#4/#5 (aee1f8b).** `voice/tts.py` e `voice/stt.py` usam um `_tmpfile()` com `mkstemp` (fd fechado, arquivo 0600) e limpam em `finally`/`except`. O teste `voice/tests/test_tempfiles.py` garante que não há `mktemp(`. Sem problemas.
+- **#6/#8 (035e7a0).** `chessx.py:199` usa `mkstemp` + `os.fdopen` e remove o arquivo no `finally`. O self-test ChaCha20 (`chessx.py:178-182`) ganhou um comentário dizendo que é vetor fixo. OK.
+- **#7 (1f29b9a).** `disasm_pyc` valida magic, flags, tamanho (16 MiB) e TYPE_CODE, e decodifica o marshal num subprocesso `python -I -S` com `RLIMIT_AS` de 512 MiB e timeout de 10 s. Nunca executa o código. Ressalva: é isolamento de processo, não sandbox (sem seccomp/namespaces, e o `RLIMIT_AS` é ignorado silenciosamente fora do POSIX). Basta para o risco (crash/DoS de `marshal`).
+- **#9 (8a072c2).** `SystemRandom()` por padrão. A seed só vale para teste (`tests/test_crypto_netsec_rng.py`).
+
+## Achados CRY-* do AUDIT_REPORT.md (dono: crypto)
+| ID | Sev. | Achado | Status |
+|---|---|---|---|
+| CRY-01 | média | AEAD caía em silêncio para Python puro sem `cryptography` | corrigido (87f1c1b): `AEADUnavailable` por padrão; `allow_fallback=True` + `InsecureFallbackWarning` (RuntimeWarning); propagado para envelope/session/keystore |
+| CRY-02 | baixa | Fallback X25519/Ed25519 puro | corrigido (29aafe1): operações com chave secreta levantam `AsymUnavailable` sem opt-in; `ed25519_verify` (só dados públicos) segue funcionando |
+| CRY-03 | baixa | `verify_password` aceitava m/t/p/ln sem teto vindos do hash | corrigido (b20aeb0): `MAX_PARAMS` checado antes de qualquer derivação, em todos os backends, inclusive argon2-cffi |
+| CRY-04 | baixa | Anti-replay do TOTP só em memória e sem lock entre processos | corrigido (4d40e42): `JSONFileStore` (lock fcntl/msvcrt + replace atômico, 0600); o store em dict continua como padrão |
+| CRY-05 | baixa | Keystore sem lock entre processos (lost update) | corrigido (859aeb5): lock + compare-and-swap; o segundo escritor recebe `KeystoreConflict` em vez de apagar chaves |
+| CRY-06/07, PERF-03 | info | Conferências / fallbacks lentos | sem ação (PERF-03 coberto por CRY-01/02) |
 
 ## Detalhes
 1. **route.ts:6.** A comparação `!==` com `` `Bearer ${secret}` `` vaza o tamanho do prefixo correto pelo tempo de resposta. Correção: comparar com `crypto.timingSafeEqual` sobre `Buffer`s de mesmo tamanho (checar o tamanho antes), ou comparar o SHA-256 dos dois lados.
@@ -54,8 +74,9 @@ Total: 0 alta, 5 média, 4 baixa.
 - Nenhum segredo hardcoded encontrado. Nenhum `pickle`, `eval` em entrada, `verify=False`, ECB, DES ou RC4.
 
 ## Backlog
-- Lock entre processos (arquivo + `fcntl`/`msvcrt`) para o estado do `TOTPVerifier` (anti-replay/lockout) e para o `keystore`.
+- ~~Lock entre processos para o `TOTPVerifier` e o keystore~~: feito em 4d40e42 e 859aeb5. É lock de host único: entre máquinas, o store precisa de CAS no banco.
 - Double Ratchet (forward secrecy por mensagem) sobre a sessão E2E (`session.py`).
 - Testar QR e keyring de verdade quando `qrcode[pil]` e `keyring` entrarem em `requirements-optional.txt` (Coder).
 - Ligar 2FA, senhas e keystore no `chessx.py` (Coder). Em web/agents (outros times), só quando eles pedirem.
-- Achados 1-8 acima, com os respectivos donos.
+- Callers fora de crypto/ que dependem de `cryptography` desde o CRY-01: `chessx.py:181-182` (self-test) e `chessx_libs/menu/registry.py:94`. Sem o pacote, levantam `AEADUnavailable`. Coder: tratar/rotular ou passar `allow_fallback=True`.
+- Opcional (web): comparar digests SHA-256 no `/api/refresh` para não vazar nem o tamanho. Opcional (desktop): avaliar `withGlobalTauri: false`.
