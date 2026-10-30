@@ -27,7 +27,11 @@ class Channel:
     kind: str = "tone"          # 'tone' | 'drums'
     opts: dict = field(default_factory=dict)
     vol: float = 1.0
-    role: str = ""              # lead/harmony/bass/arp/pad/drums ('' = free)
+    role: str = ""              # lead/harmony/bass/arp/pad/drums/echo/counter/drums2 ('' = free)
+    pan: float = None           # -1..1 (None = role default)
+    detune: float = 0.0         # cents
+    octave: int = 0             # transpose in octaves
+    hits: str = "kshc"          # drum letters this channel plays (others are rests)
 
 
 @dataclass
@@ -66,8 +70,8 @@ LAYOUTS = {
     "nes": lambda: _L(("pulse1", "tone", {"voice": "pulse", "duty": 0.5}, 1.0, "lead"),
                       ("pulse2", "tone", {"voice": "pulse", "duty": 0.25}, 0.6, "arp"),
                       ("triangle", "tone", {"voice": "triangle"}, 1.0, "bass"),
-                      ("noise", "drums", {}, 0.6, "drums"),
-                      ("dpcm", "drums", {"voice": "dpcm"}, 0.0, "")),
+                      ("noise", "drums", {}, 0.6, "drums", None, 0, 0, "sh"),
+                      ("dpcm", "drums", {"voice": "dpcm"}, 0.8, "drums", None, 0, 0, "k")),
     "gb": lambda: _L(("square1", "tone", {"voice": "pulse", "duty": 0.5}, 1.0, "lead"),
                      ("square2", "tone", {"voice": "pulse", "duty": 0.125}, 0.6, "arp"),
                      ("wave", "tone", {"voice": "wave"}, 0.9, "bass"),
@@ -92,22 +96,43 @@ LAYOUTS = {
                          ("opl4", "tone", {"ws": 3}, 0.45, "arp"),
                          ("opl5", "tone", {"ws": 0, "mod": 0.6, "mdecay": 1.0}, 0.4, "pad"),
                          ("opl6", "drums", {}, 0.6, "drums")]
-                        + [(f"opl{i}", "tone", {}, 0.0, "") for i in (7, 8, 9)])),
+                        + [("opl7", "tone", {"ws": 1, "mod": 1.0}, 0.35, "echo", 0.5),
+                           ("opl8", "tone", {"ws": 0, "mod": 0.8}, 0.45, "counter", -0.5),
+                           ("opl9", "tone", {"ws": 0, "mod": 0.4, "mdecay": 1.0}, 0.3, "pad", 0.5, 8, 1)])),
     "snes": lambda: _L(*([("dsp1", "tone", {"table": "brass"}, 1.0, "lead"),
                           ("dsp2", "tone", {"table": "strings"}, 0.5, "harmony"),
                           ("dsp3", "tone", {"table": "bass"}, 0.95, "bass"),
                           ("dsp4", "tone", {"table": "bell"}, 0.45, "arp"),
                           ("dsp5", "tone", {"table": "pad"}, 0.4, "pad"),
                           ("dsp6", "drums", {}, 0.6, "drums")]
-                         + [(f"dsp{i}", "tone", {}, 0.0, "") for i in (7, 8)])),
+                         + [("dsp7", "tone", {"table": "bell"}, 0.35, "echo", 0.5),
+                            ("dsp8", "tone", {"table": "organ"}, 0.45, "counter", -0.5)])),
     "ps1": lambda: _L(*([("spu1", "tone", {"table": "brass"}, 1.0, "lead"),
                          ("spu2", "tone", {"table": "strings"}, 0.5, "harmony"),
                          ("spu3", "tone", {"table": "bass"}, 0.95, "bass"),
                          ("spu4", "tone", {"table": "bell"}, 0.45, "arp"),
                          ("spu5", "tone", {"table": "pad"}, 0.45, "pad"),
                          ("spu6", "drums", {}, 0.6, "drums")]
-                        + [(f"spu{i}", "tone", {}, 0.0, "") for i in range(7, 25)])),
+                        + _ps1_extra())),
 }
+
+
+def _ps1_extra():
+    """PS1 channels 7-24: layered detuned pads, string harmony section, lead doubles, echoes, counter."""
+    ex = [("spu7", "tone", {"table": "brass"}, 0.35, "echo", 0.6),
+          ("spu8", "tone", {"table": "bell"}, 0.25, "echo", -0.6, 0, 1),
+          ("spu9", "tone", {"table": "strings"}, 0.45, "counter", -0.4),
+          ("spu10", "tone", {"table": "organ"}, 0.3, "counter", 0.4, 6, -1),
+          ("spu11", "tone", {"table": "brass"}, 0.4, "lead", -0.25, 7),
+          ("spu12", "tone", {"table": "brass"}, 0.4, "lead", 0.25, -7),
+          ("spu13", "tone", {"table": "strings"}, 0.3, "lead", 0.0, 0, -1),
+          ("spu14", "tone", {"table": "bass"}, 0.5, "bass", 0.0, 0, 1),
+          ("spu15", "tone", {"table": "strings"}, 0.35, "harmony", 0.5, 9),
+          ("spu16", "tone", {"table": "strings"}, 0.35, "harmony", -0.5, -9),
+          ("spu17", "tone", {"table": "bell"}, 0.3, "arp", -0.5, 0, 1)]
+    for k, (cents, pan) in enumerate(((12, -0.9), (-12, 0.9), (5, -0.6), (-5, 0.6), (18, -0.3), (-18, 0.3), (0, 0.0))):
+        ex.append((f"spu{18 + k}", "tone", {"table": "pad"}, 0.22, "pad", pan, cents, k % 2))
+    return ex
 
 
 def layout(chip_name):
@@ -123,6 +148,50 @@ DRUMS = {  # drum hit -> segment (rendered by the chip's noise/tone voices)
     "s": {"wave": "noise", "f0": 2500, "f1": 1200, "decay": 0.06, "vol": 0.8},
     "h": {"wave": "noise", "f0": 9000, "decay": 0.015, "vol": 0.45},
 }
+
+
+def _kit(**hits):
+    return {**DRUMS, **hits}
+
+
+DRUM_KITS = {  # chip-accurate-ish drum synthesis through each chip's own voices
+    "nes": _kit(k={"wave": "tone", "voice": "dpcm", "f0": 110, "f1": 40, "decay": 0.08, "vol": 1.0},
+                s={"wave": "noise", "f0": 2000, "f1": 600, "decay": 0.08, "vol": 0.8},
+                h={"wave": "noise", "f0": 12000, "short": True, "decay": 0.02, "vol": 0.4}),
+    "gb": _kit(k={"wave": "noise", "f0": 300, "f1": 60, "decay": 0.07, "vol": 1.0},
+               s={"wave": "noise", "f0": 3000, "f1": 1500, "decay": 0.07, "vol": 0.8},
+               h={"wave": "noise", "f0": 12000, "short": True, "decay": 0.02, "vol": 0.4}),
+    "sid": _kit(k={"wave": "tone", "shape": "pulse", "pw": 0.5, "pwm": 0, "f0": 180, "f1": 40, "decay": 0.06, "vol": 1.0},
+                s={"wave": "noise", "f0": 2500, "decay": 0.07, "vol": 0.8},
+                h={"wave": "noise", "f0": 12000, "decay": 0.015, "vol": 0.4}),
+    "ay": _kit(k={"wave": "tone", "hw_env": "decay", "env_hz": 12, "f0": 130, "f1": 50, "decay": 0.09, "vol": 1.0},
+               s={"wave": "noise", "f0": 3000, "decay": 0.08, "vol": 0.8},
+               h={"wave": "noise", "f0": 20000, "decay": 0.02, "vol": 0.4}),
+    "sn": _kit(k={"wave": "noise", "periodic": True, "f0": 110, "f1": 50, "decay": 0.08, "vol": 1.0},
+               s={"wave": "noise", "f0": 2000, "decay": 0.07, "vol": 0.8},
+               h={"wave": "noise", "f0": 8000, "decay": 0.02, "vol": 0.4}),
+    "fm": _kit(k={"wave": "tone", "algorithm": 0, "feedback": 0.0, "ratios": (1, 1, 1, 1), "levels": (.6, .4, .3, 1),
+                  "decays": (.02, .03, .04, .12), "f0": 150, "f1": 40, "decay": 0.12, "vol": 1.0},
+               s={"wave": "noise", "f0": 400, "decay": 0.08, "vol": 0.8},
+               h={"wave": "tone", "algorithm": 7, "ratios": (7.13, 9.31, 11.7, 13.9), "levels": (1, 1, 1, 1),
+                  "decays": (.02, .02, .02, .02), "f0": 700, "decay": 0.02, "vol": 0.3}),
+    "opl": _kit(k={"wave": "tone", "ws": 0, "mod": 0.5, "ratios": (1, 1), "f0": 120, "f1": 45, "decay": 0.1, "vol": 1.0},
+                s={"wave": "noise", "f0": 400, "decay": 0.07, "vol": 0.8},
+                h={"wave": "tone", "ws": 3, "mod": 6.0, "ratios": (7.3, 1), "f0": 3000, "decay": 0.02, "vol": 0.3}),
+    "snes": _kit(k={"wave": "tone", "table": "bass", "f0": 110, "f1": 38, "decay": 0.09, "vol": 1.0},
+                 s={"wave": "noise", "decay": 0.09, "vol": 0.8},
+                 h={"wave": "noise", "decay": 0.02, "vol": 0.35}),
+    "ps1": _kit(k={"wave": "tone", "table": "bass", "f0": 100, "f1": 35, "decay": 0.1, "vol": 1.0},
+                s={"wave": "noise", "decay": 0.1, "vol": 0.8},
+                h={"wave": "noise", "decay": 0.025, "vol": 0.35}),
+}
+
+
+def _duty(chip_name, d):
+    """NES/GB take a duty index 0..3; others take a fraction."""
+    if chip_name in ("nes", "gb") and isinstance(d, float):
+        return min(range(4), key=lambda i: abs((0.125, 0.25, 0.5, 0.75)[i] - d))
+    return d
 
 
 def _channel_segments(song, ch, loops):
@@ -147,13 +216,15 @@ def _channel_segments(song, ch, loops):
                 close()
                 if cell.get("off"):
                     cur = dict(rest, dur=rd)
+                elif "drum" in cell and cell["drum"] not in ch.hits:
+                    cur = dict(rest, dur=rd)
                 elif "drum" in cell:
-                    d = DRUMS[cell["drum"]]
+                    d = DRUM_KITS.get(song.chip, DRUMS)[cell["drum"]]
                     cur = {**ch.opts, **d, "dur": rd, "vol": d["vol"] * cell.get("vol", 1.0)}
                     if ch.name == "voice3" and d["wave"] == "tone":
                         cur["shape"] = "triangle"
                 else:
-                    f = midi_freq(cell["n"])
+                    f = midi_freq(cell["n"] + 12 * ch.octave) * 2 ** (ch.detune / 1200)
                     cur = {**ch.opts, "wave": "tone", "f0": f, "dur": rd, "vol": cell.get("vol", 1.0)}
                     if "env" not in cur and "decay" not in cur:
                         cur["env"] = (0.004, 0.08, 0.65, 0.03)
@@ -164,7 +235,9 @@ def _channel_segments(song, ch, loops):
                     if cell.get("slide"):
                         cur["f1"], cur["curve"] = f * 2 ** (cell["slide"] / 12), "exp"
                     if "duty" in cell:
-                        cur["duty"] = cur["pw"] = cell["duty"]
+                        cur["duty"], cur["pw"] = _duty(song.chip, cell["duty"]), cell["duty"]
+                    if "duty" in cur:
+                        cur["duty"] = _duty(song.chip, cur["duty"])
         close()
         cur = None
     # merge consecutive rests
@@ -191,7 +264,8 @@ def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=Fal
             continue
         x = c.render(segs, rate, seed + i)  # chip voices + post fx (echo/reverb) per channel
         tracks.append(x * ch.vol)
-        pans.append({"lead": 0.0, "bass": 0.0, "drums": 0.0, "harmony": -0.4, "arp": 0.4, "pad": -0.2}.get(ch.role, 0.0))
+        pans.append(ch.pan if ch.pan is not None else
+                    {"harmony": -0.4, "arp": 0.4, "pad": -0.2, "echo": 0.5, "counter": -0.5}.get(ch.role, 0.0))
     if not tracks:
         return np.zeros((total, 2) if stereo_out else total)
     if stereo_out:
@@ -210,6 +284,14 @@ def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=Fal
 # ---------------------------------------------------------------- procedural composition
 MODES = {"major": [0, 2, 4, 5, 7, 9, 11], "minor": [0, 2, 3, 5, 7, 8, 10], "dorian": [0, 2, 3, 5, 7, 9, 10],
          "phrygian": [0, 1, 3, 5, 7, 8, 10], "harmonic_minor": [0, 2, 3, 5, 7, 8, 11], "mixolydian": [0, 2, 4, 5, 7, 9, 10]}
+
+SID_FILTER = {  # bass filter sweep per style
+    "title": {"from": 300, "to": 3500, "res": 0.6, "mode": "lp"},
+    "battle": {"from": 5000, "to": 500, "res": 0.85, "mode": "lp"},
+    "victory": {"from": 800, "to": 5000, "res": 0.5, "mode": "lp"},
+    "chess_thinking": {"from": 250, "to": 900, "res": 0.8, "mode": "lp"},
+    "game_over": {"from": 2500, "to": 150, "res": 0.7, "mode": "lp"},
+}
 
 STYLES = {
     #               mode            bpm  speed progressions (scale degrees, 0-based)        drums (16 steps)                          density
@@ -243,7 +325,10 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
     prog = st["progs"][int(r.integers(len(st["progs"])))]
     chords = [prog[b % len(prog)] for b in range(bars)]
     chans = layout(chip_name)
-    roles = {c.role: c for c in chans if c.role}
+    roles = {}
+    for c in chans:
+        if c.role:
+            roles.setdefault(c.role, []).append(c)
     scale_notes = [root + 12 * o + s for o in (0, 1, 2) for s in sc]
     drum_pats = st["drums"]
 
@@ -289,6 +374,16 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
                         if s % 4 == 0 else None for s in range(16)]
         else:
             p["arp"] = [{"n": ch[(s // 4) % 3] + 12, "vol": 0.6} if s % 4 == 0 else None for s in range(16)]
+        p["echo"] = [{"off": True}] * 3 + [dict(c, vol=0.7) if c and "n" in c else c for c in mel[:13]]
+        cnt, prev = [None] * 16, ch[2] + 12
+        for step in (0, 8) if st["density"] < 0.6 else (0, 4, 8, 12):  # countermelody: contrary motion on chord tones
+            lead_up = mel[step] and "n" in mel[step] and mel[step]["n"] > prev
+            opts = sorted({c + 12 for c in ch} | {c for c in ch})
+            below = [n for n in opts if n < prev] or opts[:1]
+            above = [n for n in opts if n > prev] or opts[-1:]
+            prev = below[-1] if lead_up else above[0]
+            cnt[step] = {"n": prev, "vol": 0.8}
+        p["counter"] = cnt
         p["harmony"] = [{"n": ch[1], "vib": 0.006}] + [None] * 15
         p["pad"] = [{"n": ch[2] - 12, "vol": 0.7}] + [None] * 15
         if drum_pats:
@@ -296,6 +391,8 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
             if b == bars - 1 and style in ("title", "battle"):
                 pat = pat[:12] + "ssss"  # fill
             p["drums"] = [None if c == "." else {"drum": c} for c in pat]
+        else:
+            p["drums"] = [None] * 16
         return p
 
     patterns, order = {}, []
@@ -308,16 +405,20 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
         for b in range(start, end):
             parts = bar_parts(b, chords[b], pi)
             for role, cells in parts.items():
-                if role in roles:
-                    rows[roles[role].name] += cells
+                for c in roles.get(role, []):
+                    rows[c.name] += cells
         for c in chans:  # unused channels / roles: pad with holds
             n = 16 * (end - start)
             rows[c.name] = (rows[c.name] + [None] * n)[:n]
         patterns[name] = rows
         order.append(name)
     if chip_name == "sid" and style == "battle":  # SID flavour: ring-modulated lead, hard-synced bass
-        roles["lead"].opts.update(shape="triangle", ring=1.5)
-        roles["bass"].opts.update(sync=1.98)
+        roles["lead"][0].opts.update(shape="triangle", ring=1.5)
+        roles["bass"][0].opts.update(sync=1.98)
+    if chip_name == "sid":  # SID resonant filter with cutoff sweep (per-channel automation)
+        roles["bass"][0].opts["filter"] = SID_FILTER[style]
+        if style == "chess_thinking":
+            roles["lead"][0].opts["filter"] = {"from": 600, "to": 2500, "res": 0.7, "mode": "bp"}
     return Song(chip=chip_name, bpm=st["bpm"], speed=st["speed"], channels=chans, patterns=patterns,
                 order=order, loop=style not in ("game_over", "victory"), title=f"{style} #{seed}", style=style)
 
@@ -434,7 +535,8 @@ pattern A
 pulse1   E5 . . G5 . . C6:v . B5 . G5 . E5:u2 . --- .
 pulse2   C5:a047 . . . A4:a037 . . . F4:a049 . . . G4:a047 . . .
 triangle C3 . C4 . A2 . A3 . F2 . F3 . G2 . G3 .
-noise    k . h . s . h . k k h . s . h h
+noise    . . h . s . h . . . h . s . h h
+dpcm     k . . . . . . . k k . . . . . .
 order A A
 loop yes
 """
