@@ -7,3 +7,6 @@ lief>=0.14             # PE/ELF/Mach-O parsing
 angr>=9.2              # heavy (hundreds of MB), symbolic execution
 ppdeep>=20200505       # ssdeep-style fuzzy hashing (pure Python)
 py-tlsh>=4.7           # TLSH locality-sensitive hashing
+# crypto: 2FA QR + OS keyring
+qrcode[pil]>=7.4
+keyring>=24
