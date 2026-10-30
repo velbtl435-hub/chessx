@@ -18,7 +18,8 @@ class TestLegacy(unittest.TestCase):
         self.assertTrue(S.synth("boot"))
         self.assertIn("boot", S.EFFECTS)
         self.assertEqual(S.play("boot"), "noop")  # muted
-        self.assertEqual(S.play("does-not-exist"), "noop")
+        with self.assertRaises(S.UnknownSound):
+            S.play("does-not-exist")
         self.assertTrue(S.PROCEDURAL)
 
 
@@ -124,6 +125,39 @@ class TestEvents(unittest.TestCase):
         from chessx_libs.media.gen.audio import CHESS_SOUNDS
         self.assertIs(events._chess_table(), CHESS_SOUNDS)
         self.assertTrue(np.array_equal(S.render("move"), S.render("chess.move")))
+
+
+class TestUnknownSound(unittest.TestCase):
+    CALL_SITES = ["result", "error", "boot", "success"]  # chessx.py, tamagox play_audio, menu entry 14 default
+
+    def test_raises_keyerror_with_valid_list(self):
+        for fn in (S.play, S.render, S.save):
+            with self.subTest(fn=fn.__name__), self.assertRaises(KeyError) as cm:
+                fn("nope-x")
+            self.assertIsInstance(cm.exception, S.UnknownSound)
+            msg = str(cm.exception)
+            self.assertTrue(msg.startswith("unknown sound 'nope-x'; valid: "), msg)
+            self.assertIn("capture", msg)
+        self.assertIs(events.UnknownSound, S.UnknownSound)
+
+    def test_raises_even_when_muted_or_disabled(self):
+        with self.assertRaises(S.UnknownSound):
+            S.play("nope", enabled=False)
+
+    def test_legacy_sfx_path(self):
+        from chessx_libs.sounds import sfx
+        for fn in (sfx.play, sfx.synth):
+            with self.assertRaises(S.UnknownSound) as cm:
+                fn("nope")
+            self.assertIn("boot", str(cm.exception))
+
+    def test_known_names_never_raise(self):
+        for name in self.CALL_SITES + sorted(S.EFFECTS):
+            self.assertIn(name, S.list_events())
+            self.assertEqual(S.play(name), "noop")  # muted
+        with mock.patch.dict(os.environ, {"CHESSX_MUTE": ""}), \
+                mock.patch.object(events, "find_player", return_value="noop"):
+            self.assertEqual(S.play("boot"), "noop")  # no player -> still silent
 
 
 if __name__ == "__main__":

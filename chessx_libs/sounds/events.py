@@ -6,6 +6,7 @@ TamagoX or any other module only needs: list_events(), render(), save(), play(),
 import os, shutil, subprocess, sys, tempfile
 from . import dsp, chiptune, synthwave, cabinet, sfx
 from .dsp import RATE
+from ._errors import UnknownSound  # noqa: F401  (public: sounds.UnknownSound)
 
 _REGISTRY, _CATEGORY = {}, {}
 
@@ -26,10 +27,14 @@ def categories():
     return {c: list_events(c) for c in sorted(set(_CATEGORY.values()))}
 
 
+def _check(event):
+    if event not in _REGISTRY:
+        raise UnknownSound(event, _REGISTRY)
+
+
 def render(event, rate=RATE, seed=0, **kw):
     """Render event to a float64 mono array in [-1, 1] (deterministic for a given seed)."""
-    if event not in _REGISTRY:
-        raise KeyError(f"unknown sound event {event!r}; see list_events()")
+    _check(event)
     np = dsp.need_numpy()
     x = np.clip(np.nan_to_num(np.asarray(_REGISTRY[event](rate=rate, seed=seed, **kw), float)), -1, 1)
     return x
@@ -37,6 +42,7 @@ def render(event, rate=RATE, seed=0, **kw):
 
 def save(event, path=None, rate=RATE, seed=0, **kw):
     """Render and write a 16-bit mono WAV; returns path (temp file if path is None)."""
+    _check(event)
     path = path or os.path.join(tempfile.gettempdir(), f"chessx_{event}_{seed}.wav")
     return dsp.write_wav(path, render(event, rate, seed, **kw), rate)
 
@@ -71,12 +77,12 @@ def play_file(path, player=None, block=False):
 
 
 def play(event, enabled=True, block=False, seed=0, **kw):
-    """Play a registered event (or a legacy sfx name). Never raises; returns player or 'noop'."""
+    """Play a registered event; returns player or 'noop' (muted / no player / playback error).
+    Raises UnknownSound (a KeyError) for unknown names."""
+    _check(event)
     if not enabled or os.environ.get("CHESSX_MUTE"):
         return "noop"
     try:
-        if event not in _REGISTRY:
-            return sfx.play(event) if event in sfx.EFFECTS else "noop"
         player = find_player()
         if player == "noop":
             return "noop"

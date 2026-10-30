@@ -1,3 +1,4 @@
+from ._errors import UnknownSound
 import math, os, shutil, struct, subprocess, sys, tempfile, wave
 
 RATE = 22050
@@ -23,6 +24,8 @@ PLAYER = _player()
 
 
 def synth(name: str, volume: float = 0.4) -> bytes:
+    if name not in EFFECTS:
+        raise UnknownSound(name, EFFECTS)
     frames = bytearray()
     for freq, dur in EFFECTS[name]:
         n = int(RATE * dur)
@@ -41,8 +44,10 @@ def save_wav(name: str, path: str) -> str:
 
 
 def play(name: str, enabled: bool = True) -> str:
-    """Play effect; returns player used. Never raises; 'noop' when silent."""
-    if not enabled or PLAYER == "noop" or name not in EFFECTS or os.environ.get("CHESSX_MUTE"):
+    """Play effect; returns player used or 'noop' when silent. Raises UnknownSound for unknown names."""
+    if name not in EFFECTS:
+        raise UnknownSound(name, EFFECTS)
+    if not enabled or PLAYER == "noop" or os.environ.get("CHESSX_MUTE"):
         return "noop"
     try:
         path = save_wav(name, os.path.join(tempfile.gettempdir(), f"chessx_{name}.wav"))
