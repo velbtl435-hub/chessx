@@ -15,6 +15,7 @@ STRINGS = {
         "menu.agents": "Agents",
         "menu.system": "System",
         "menu.back": "Back to shell",
+        "menu.all": "All items",
     },
     "pt": {
         "menu.title": "menu  (número, atalho ou comando livre)",
@@ -31,6 +32,7 @@ STRINGS = {
         "menu.agents": "Agentes",
         "menu.system": "Sistema",
         "menu.back": "Voltar ao shell",
+        "menu.all": "Todos os itens",
     },
     "ja": {
         "menu.title": "メニュー（番号・ショートカット・自由入力）",
@@ -47,5 +49,6 @@ STRINGS = {
         "menu.agents": "エージェント",
         "menu.system": "システム",
         "menu.back": "シェルに戻る",
+        "menu.all": "すべての項目",
     },
 }
