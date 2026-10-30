@@ -6,6 +6,7 @@ Usage:
   python3 chessx.py -q "query"      one-shot (search / convert / reverse ...)
   python3 chessx.py --selftest      offline smoke test of every package
   python3 chessx.py agent <cmd>     Agent Factory (create/new/list/run/types/gen-type...; see docs/AGENT_FACTORY.md)
+Math: prof <topic> <args> (PhD professor: math, EE, CS, systems)   math <expr>
 Flags: --lang en|pt|ja  --no-boot  --mute  --json
 The previous v0.5 single-file version is kept as chessx_v05_legacy.py.
 """
@@ -17,6 +18,7 @@ from chessx_libs.chess_ai import classify
 from chessx_libs.i18n import Translator
 from chessx_libs.interface import boot_sequence, Board, Cell
 from chessx_libs.search import multi_search, DuckDuckGoEngine, DDGSEngine, BraveEngine
+from chessx_libs import mathx
 from chessx_libs import crypto, media, reversing, voice, windows, sounds, detective, bases, scheduler, audit
 
 VERSION = "0.6"
@@ -53,6 +55,8 @@ class ChessX:
         return Board(cells).render() if cells else self.t("no_results")
 
     def handle(self, text):
+        if mathx.is_math_command(text):
+            return mathx.dispatch(text, self.t.lang, self._read_block)
         it = classify(text)
         a = it.args
         if it.name == "empty":
@@ -95,6 +99,19 @@ class ChessX:
         if it.name == "refresh":
             return "refresh every %ss (use scheduler in interactive mode)" % a.get("seconds", 60)
         return self.search(a.get("query", text))
+
+    def _read_block(self, prompt="... "):
+        """Read a multi-line block from the terminal; an empty line (or EOF) ends it."""
+        lines = []
+        while True:
+            try:
+                line = input(prompt)
+            except EOFError:
+                break
+            if not line.strip():
+                break
+            lines.append(line)
+        return lines
 
     def repl(self):
         print("ChessX v" + VERSION)
@@ -150,6 +167,7 @@ def selftest():
     check("bases", lambda: bases.convert("ff", 16, 2) == "11111111" or 1 / 0)
     check("scheduler", lambda: scheduler.Scheduler().status())
     check("audit", lambda: audit.audit_tree(os.path.join(os.path.dirname(os.path.abspath(__file__)), "chessx_libs")))
+    check("mathx", lambda: mathx.dispatch("prof ohm V=12 R=4").startswith("I = V/R") or 1 / 0)
     return ok
 
 

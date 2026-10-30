@@ -24,3 +24,5 @@ urwid
 # --- required: media / numeric ---
 pillow
 numpy
+# --- required: math engine (chessx_libs.mathx) ---
+sympy
