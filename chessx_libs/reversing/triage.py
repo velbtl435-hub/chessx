@@ -405,16 +405,50 @@ def _yara_module():
         return None
 
 
+def pack_license(directory: str) -> str:
+    """Classify a rule pack by its LICENSE file (walks up to 2 parents). Read-only, offline."""
+    d = os.path.realpath(directory)
+    for _ in range(3):
+        for n in ("LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING"):
+            p = os.path.join(d, n)
+            if os.path.isfile(p):
+                try:
+                    with open(p, encoding="utf-8", errors="replace") as fh:
+                        t = fh.read(4096)
+                except OSError:
+                    return "unknown"
+                if "Elastic License 2.0" in t:
+                    return "Elastic-2.0"
+                if "Detection Rule License" in t:
+                    return "DRL-1.1"
+                if "GNU GENERAL PUBLIC LICENSE" in t:
+                    return "GPL-2.0" if "Version 2" in t else "GPL"
+                if "Permission is hereby granted, free of charge" in t:
+                    return "MIT"
+                return "unknown"
+        d = os.path.dirname(d)
+    return "unknown"
+
+
 def yara_scan(data: bytes, extra=None) -> dict:
     """Scan bytes with user-provided .yar/.yara files (no includes, no network). Graceful w/o yara."""
-    res = {"available": False, "rules_loaded": 0, "matched": [], "errors": [], "truncated": False, "timed_out": False}
+    res = {"available": False, "rules_loaded": 0, "matched": [], "errors": [], "truncated": False,
+           "timed_out": False, "packs": []}
     yara = _yara_module()
     if yara is None:
         return res
     res["available"] = True
     files = []
     for d in rule_dirs(extra):
-        files += _safe_files(d, (".yar", ".yara"))
+        found = _safe_files(d, (".yar", ".yara"))
+        if not found:
+            continue
+        lic = pack_license(d)
+        res["packs"].append({"dir": d, "license": lic, "files": len(found)})
+        if lic == "Elastic-2.0":  # spec §5: avoided (ELv2 hosted-service limits)
+            res["errors"].append(f"yara pack ignorado (Elastic License 2.0): {d}")
+            continue
+        files += found
     if len(files) > YARA_MAX_FILES:
         res["errors"].append(f"yara: {len(files)} arquivos > limite {YARA_MAX_FILES}; excedentes ignorados")
         files = files[:YARA_MAX_FILES]
@@ -520,7 +554,7 @@ def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None, allowl
     matched = run_rules(ctx, rules)
     ys = yara_scan(data, extra_rule_dirs) if data is not None else {"available": _yara_module() is not None,
                                                                     "rules_loaded": 0, "matched": [], "errors": [],
-                                                                    "truncated": False, "timed_out": False}
+                                                                    "truncated": False, "timed_out": False, "packs": []}
     matched += ys["matched"]
     errors += ys["errors"]
     score = score_matches(matched)
@@ -535,7 +569,8 @@ def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None, allowl
     return {"disclaimer": DISCLAIMER, "score": score, "verdict": verdict,
             "evidence": evidence, "matched": matched,
             "engines": {"chessx_rules": True, "chessx_rules_loaded": len(rules), "yara": ys["available"],
-                        "yara_rules_loaded": ys["rules_loaded"]},
+                        "yara_rules_loaded": ys["rules_loaded"],
+                        "packs": ys.get("packs", [])},
             "allowlisted": allowlisted, "limits": {"bytes_scanned": len(data) if data is not None else 0,
                                              "truncated": ys["truncated"], "timed_out": ys["timed_out"]},
             "errors": errors, "confidence": round(min(1.0, 0.3 + 0.1 * len(matched)), 2) if matched else 0.5,

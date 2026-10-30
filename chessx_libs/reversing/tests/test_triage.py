@@ -256,3 +256,23 @@ def test_fp_corpus_system_binaries():
         assert al["verdict"] != "likely_malicious" and al["evidence"]  # allowlisted ⇒ never likely
         likely += raw["verdict"] == "likely_malicious"
     assert likely / len(files) <= 0.10  # loose ratio, never exact counts
+
+
+def test_pack_license_policy(monkeypatch, tmp_path):
+    import types
+    elastic = tmp_path / "el"; elastic.mkdir()
+    (elastic / "LICENSE.txt").write_text("Elastic License 2.0\nURL: ...")
+    (elastic / "x.yar").write_text("rule X { condition: true }")
+    drl = tmp_path / "drl"; drl.mkdir()
+    (drl / "LICENSE").write_text("# Detection Rule License (DRL) 1.1\n")
+    (drl / "y.yar").write_text("rule Y { condition: true }")
+    seen = []
+
+    class Rules:
+        def match(self, data, timeout):
+            return []
+    monkeypatch.setattr(tr, "_yara_module", lambda: types.SimpleNamespace(
+        compile=lambda filepath, includes: seen.append(os.path.basename(filepath)) or Rules()))
+    t = tr.triage({"file": {"sha256": "3" * 64}}, b"z", [str(elastic), str(drl)])
+    assert seen == ["y.yar"] and any("Elastic" in e for e in t["errors"])
+    assert {p["license"] for p in t["engines"]["packs"]} == {"Elastic-2.0", "DRL-1.1"}
