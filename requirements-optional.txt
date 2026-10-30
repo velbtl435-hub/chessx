@@ -1,3 +1,7 @@
-# OPTIONAL: reversing extras (large; angr pulls in hundreds of MB). ChessX works without them.
-r2pipe            # needs the radare2 binary installed separately
-angr
+# OPTIONAL: reversing extras. ChessX works without them.
+capstone>=5.0          # disassembly backend (chessx_libs/reversing/disasm.py)
+pyelftools>=0.31       # ELF parsing
+r2pipe>=2.1            # needs the radare2 binary installed separately
+python-magic>=0.4.27   # needs libmagic on the system
+lief>=0.14             # PE/ELF/Mach-O parsing
+angr>=9.2              # heavy (hundreds of MB), symbolic execution
