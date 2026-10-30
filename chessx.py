@@ -2,7 +2,8 @@
 """ChessX v0.6 - root orchestrator wiring every chessx_libs package.
 
 Usage:
-  python3 chessx.py                 interactive shell
+  python3 chessx.py [--menu]        unified numbered menu (default)
+  python3 chessx.py --shell         free-text interactive shell
   python3 chessx.py -q "query"      one-shot (search / convert / reverse ...)
   python3 chessx.py --selftest      offline smoke test of every package
   python3 chessx.py agent <cmd>     Agent Factory (create/new/list/run/types/gen-type...; see docs/AGENT_FACTORY.md)
@@ -10,40 +11,68 @@ Math: prof <topic> <args> (PhD professor: math, EE, CS, systems)   math <expr>
       draw (multi-line ASCII-art equation, empty line ends)   render <expr>
       steps solve|system|diff|integrate|simplify|limit|matrix <input>   check (multi-line working)
       export <lang|all> <expr>   translate <from> <to> <expr>   calc <snippet> (sandboxed)
-Flags: --lang en|pt|ja  --no-boot  --mute  --json
+Flags: --lang en|pt|ja  --no-boot  --mute  --json  --menu  --shell
 The previous v0.5 single-file version is kept as chessx_v05_legacy.py.
 """
 import argparse, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from chessx_libs.chess_ai import classify
-from chessx_libs.i18n import Translator
-from chessx_libs.interface import boot_sequence, Board, Cell
-from chessx_libs.search import multi_search, DuckDuckGoEngine, DDGSEngine, BraveEngine
-from chessx_libs import mathx
-from chessx_libs import crypto, media, reversing, voice, windows, sounds, detective, bases, scheduler, audit
+import importlib
+
+
+class _Lazy:
+    """Module proxy: imports chessx_libs.<name> on first attribute access, so a broken
+    package only fails the feature that uses it (the menu shows it as unavailable)."""
+    def __init__(self, name):
+        self._name, self._mod = name, None
+
+    def __getattr__(self, attr):
+        if self._mod is None:
+            self._mod = importlib.import_module("chessx_libs." + self._name)
+        return getattr(self._mod, attr)
+
+
+chess_ai, i18n, interface, search_pkg, mathx = (_Lazy(n) for n in ("chess_ai", "i18n", "interface", "search", "mathx"))
+crypto, media, reversing, voice, windows, sounds, detective, bases, scheduler, audit = (_Lazy(n) for n in (
+    "crypto", "media", "reversing", "voice", "windows", "sounds", "detective", "bases", "scheduler", "audit"))
+
+
+def _safe(fn, *a, **kw):
+    try:
+        return fn(*a, **kw)
+    except Exception:
+        return None
+
+
+def classify(text): return chess_ai.classify(text)
+def multi_search(*a, **kw): return search_pkg.multi_search(*a, **kw)
+
 
 VERSION = "0.6"
 
 
 class ChessX:
     def __init__(self, lang="en", mute=False, as_json=False):
-        self.t = Translator(lang)
-        voice.bind_translator(self.t)  # voice follows the UI language (en/pt/ja)
+        self.t = i18n.Translator(lang)
+        _safe(voice.bind_translator, self.t)  # voice follows the UI language (en/pt/ja)
         self.as_json = as_json
         if mute:
             os.environ["CHESSX_MUTE"] = "1"
         self.results = []
-        self.engines = [DDGSEngine(), DuckDuckGoEngine()]
-        if os.environ.get("BRAVE_API_KEY"):
-            self.engines.append(BraveEngine())
+        self.engines = []
+        try:
+            self.engines = [search_pkg.DDGSEngine(), search_pkg.DuckDuckGoEngine()]
+            if os.environ.get("BRAVE_API_KEY"):
+                self.engines.append(search_pkg.BraveEngine())
+        except Exception:
+            pass  # search unavailable; menu marks it
 
     # ---- actions -------------------------------------------------------
     def search(self, query, limit=10):
         print(self.t("searching"), query)
         self.results = multi_search(self.engines, query, limit=limit)
-        sounds.play("result" if self.results else "error")
+        _safe(sounds.play, "result" if self.results else "error")
         if self.as_json:
             return json.dumps([r.to_dict() for r in self.results], ensure_ascii=False, indent=1)
         if not self.results:
@@ -54,11 +83,11 @@ class ChessX:
         return "\n".join(lines)
 
     def board(self):
-        cells = [Cell(r.title[:30], r.url, "web", r.score) for r in self.results]
-        return Board(cells).render() if cells else self.t("no_results")
+        cells = [interface.Cell(r.title[:30], r.url, "web", r.score) for r in self.results]
+        return interface.Board(cells).render() if cells else self.t("no_results")
 
     def handle(self, text):
-        if mathx.is_math_command(text):
+        if _safe(mathx.is_math_command, text):
             return mathx.dispatch(text, self.t.lang, self._read_block)
         it = classify(text)
         a = it.args
@@ -130,7 +159,7 @@ class ChessX:
                 break
             except Exception as e:  # keep the shell alive, report the error
                 out = "error: %s" % e
-                sounds.play("error")
+                _safe(sounds.play, "error")
             if out:
                 print(out)
 
@@ -145,8 +174,8 @@ def selftest():
             ok[name] = "FAIL: %r" % e
     check("chess_ai", lambda: [classify("open 3").name == "open" or 1 / 0,
                                classify("convert hex to binary").name == "convert" or 1 / 0])
-    check("i18n", lambda: Translator("pt")("welcome") or 1 / 0)
-    check("interface", lambda: Board([Cell("a"), Cell("b")]).render())
+    check("i18n", lambda: i18n.Translator("pt")("welcome") or 1 / 0)
+    check("interface", lambda: interface.Board([interface.Cell("a"), interface.Cell("b")]).render())
     check("crypto", lambda: crypto.chacha20_poly1305_decrypt(bytes(32), bytes(12),
           crypto.chacha20_poly1305_encrypt(bytes(32), bytes(12), b"x")) == b"x" or 1 / 0)
     def srch():
@@ -180,6 +209,11 @@ def selftest():
         p = tamagox.Pet("st"); tamagox.attach(r, p, force=True); r.run(); assert p.xp > 0
     check("agents", agents_check)
     check("audit", lambda: audit.audit_tree(os.path.join(os.path.dirname(os.path.abspath(__file__)), "chessx_libs")))
+    def menu_check():
+        from chessx_libs.menu import ENTRIES, availability
+        assert len({e.key for e in ENTRIES}) == len(ENTRIES)
+        assert availability("definitely_not_a_pkg")[0] is False
+    check("menu", menu_check)
     check("mathx", lambda: mathx.dispatch("prof ohm V=12 R=4").startswith("I = V/R") or 1 / 0)
     return ok
 
@@ -196,6 +230,8 @@ def main(argv=None):
     ap.add_argument("--mute", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--menu", action="store_true", help="unified numbered menu (default with no args)")
+    ap.add_argument("--shell", action="store_true", help="free-text shell (the pre-menu default)")
     a = ap.parse_args(argv)
     if a.selftest:
         res = selftest()
@@ -206,11 +242,14 @@ def main(argv=None):
     if a.query:
         print(app.handle(a.query))
         return 0
-    if not a.no_boot:
-        boot_sequence(duration=2.0)
-    sounds.play("boot")
-    app.repl()
-    return 0
+    if not a.no_boot and sys.stdin.isatty():
+        _safe(interface.boot_sequence, duration=2.0)
+    _safe(sounds.play, "boot")
+    if a.shell:
+        app.repl()
+        return 0
+    from chessx_libs.menu import Menu  # --menu, and the default when no -q/--selftest/--shell
+    return Menu(app).loop()
 
 
 if __name__ == "__main__":
