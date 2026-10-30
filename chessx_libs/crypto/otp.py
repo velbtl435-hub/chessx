@@ -2,8 +2,9 @@
 
 Also: otpauth:// provisioning URIs (+ optional QR via `qrcode`), a replay-protected
 TOTPVerifier with failure lockout, and single-use hashed backup codes."""
-import base64, hashlib, hmac, re, secrets, struct, threading, time
+import base64, contextlib, hashlib, hmac, json, os, re, secrets, struct, tempfile, threading, time
 from urllib.parse import quote, urlencode
+from ._filelock import locked as _locked
 
 _ALGOS = {"SHA1": hashlib.sha1, "SHA256": hashlib.sha256, "SHA512": hashlib.sha512}
 
@@ -95,9 +96,57 @@ class LockedOut(Exception):
     pass
 
 
+class JSONFileStore:
+    """Persistent, cross-process TOTP state (CRY-04): a JSON file (0600) read-modify-written under an
+    exclusive file lock with an atomic replace, so replay protection and lockouts survive restarts and
+    are shared by every worker on the same host. Pass it as TOTPVerifier(store=JSONFileStore(path))."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def _load(self):
+        try:
+            with open(self.path) as fh:
+                return json.load(fh)
+        except FileNotFoundError:
+            return {}
+
+    @contextlib.contextmanager
+    def transaction(self):
+        with _locked(self.path):
+            data = self._load()
+            yield data
+            d = os.path.dirname(os.path.abspath(self.path))
+            fd, tmp = tempfile.mkstemp(dir=d, prefix=".totp-")
+            try:
+                os.chmod(tmp, 0o600)
+                with os.fdopen(fd, "w") as fh:
+                    json.dump(data, fh)
+                os.replace(tmp, self.path)
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
+
+    # read-only dict-like access
+    def get(self, account, default=None):
+        return self._load().get(account, default)
+
+    def __getitem__(self, account):
+        return self._load()[account]
+
+    def __contains__(self, account):
+        return account in self._load()
+
+
+_NEW_STATE = {"last_step": -1, "failures": 0, "locked_until": 0}
+
+
 class TOTPVerifier:
-    """Replay-protected TOTP check + lockout. `store` is any dict-like (account -> state);
-    persist it yourself. Not process-safe across machines; thread-safe within one."""
+    """Replay-protected TOTP check + lockout. `store` is any dict-like (account -> state); an in-memory
+    dict (default) is thread-safe but per-process and lost on restart. For several workers or restarts
+    use JSONFileStore(path) (or any store with a `transaction()` context manager yielding a mutable
+    dict): the whole check-and-update then runs under a cross-process lock."""
 
     def __init__(self, store=None, window: int = 1, step: int = 30, digits: int = 6,
                  algo=hashlib.sha1, max_failures: int = 5, lockout_seconds: int = 300):
@@ -106,28 +155,38 @@ class TOTPVerifier:
         self.max_failures, self.lockout_seconds = max_failures, lockout_seconds
         self._lock = threading.Lock()
 
+    @contextlib.contextmanager
+    def _tx(self):
+        with self._lock:
+            if hasattr(self.store, "transaction"):
+                with self.store.transaction() as data:
+                    yield data
+            else:
+                yield self.store
+
     def _state(self, account):
-        return self.store.setdefault(account, {"last_step": -1, "failures": 0, "locked_until": 0})
+        return self.store.setdefault(account, dict(_NEW_STATE))
 
     def locked(self, account, now: float = None) -> bool:
         now = time.time() if now is None else now
-        return self._state(account)["locked_until"] > now
+        st = self.store.get(account) or _NEW_STATE
+        return st["locked_until"] > now
 
     def verify(self, account, secret, code, t: float = None) -> bool:
         now = time.time() if t is None else t
-        with self._lock:
-            st = self._state(account)
+        with self._tx() as data:
+            st = dict(data.get(account) or _NEW_STATE)
             if st["locked_until"] > now:
                 raise LockedOut(f"{account}: locked for {int(st['locked_until'] - now)}s")
             c = match_totp(secret, code, self.window, now, self.step, self.digits, self.algo)
             if c is not None and c > st["last_step"]:
                 st.update(last_step=c, failures=0)
-                self.store[account] = st
+                data[account] = st
                 return True
             st["failures"] += 1
             if st["failures"] >= self.max_failures:
                 st.update(failures=0, locked_until=now + self.lockout_seconds)
-            self.store[account] = st
+            data[account] = st
             return False
 
 
