@@ -15,7 +15,7 @@
 ## Variáveis (opcionais)
 | Onde | Nome | Para quê |
 |---|---|---|
-| Vercel | `CRON_SECRET` | protege `/api/refresh` |
+| Vercel | `CRON_SECRET` | **obrigatório**: sem ele `/api/refresh` responde 503 (fail-closed) |
 | Vercel | `BRAVE_API_KEY`, `SEARXNG_URL` | ativa esses motores de busca |
 | Vercel | `CHESSX_FEED_QUERIES` | troca as buscas do feed |
 | GitHub (variável) | `CHESSX_URL` | liga o ping de 3h |
