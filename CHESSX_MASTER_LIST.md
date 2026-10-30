@@ -1,5 +1,5 @@
 # ChessX - Master Task List & Analysis
-# Version 0.5.4 | Updated 10/30/2026
+# Version 0.5.5 | Updated 10/30/2026
 
 ---
 
@@ -39,6 +39,7 @@
 | B | DNS and proxy (incl. DoH/DoT) | Network privacy |
 | B | Defensive bypass (authorized self-protection testing only) | Harden own defenses |
 | B | Cookie hygiene and analysis | Browser privacy |
+| B | Opt-in local wellbeing mode (gentle, non-judging, deletable) | Care without surveillance |
 | B | Information cross-referencing | Differentiating feature |
 | B | Introductory explanatory text | Onboarding |
 | B | ASCII art + pixel art + retro fonts | Strong aesthetics |
@@ -155,7 +156,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 - ChessX is one tool within Artware
 - User: SuperGrok, borrowed ChatGPT, GitHub velbtl435-hub
 - Start date: 10/30/2026
-- Repo: github.com/velbtl435-hub/chessx (commit e8294f1e)
+- Repo: github.com/velbtl435-hub/chessx (commit 425f9358)
 
 ---
 
@@ -226,6 +227,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Defensive bypass (own protection only) | Idea — B, ethics-gated |
 | Cookie hygiene | Idea — B |
 | ASCII browser mode | Idea — A candidate |
+| Wellbeing analysis mode (opt-in, local-only) | Idea — B |
 
 ---
 
@@ -387,3 +389,24 @@ Explicit framing: **protection of ChessX and the user's own systems only**. Not 
 - VPN/VPS/DNS/proxy/bypass/cookies → B
 - ASCII browser mode → A
 - Bypass and any offensive-adjacent tooling stay ethics-gated and authorized-target-only
+
+---
+
+## 21. WELLBEING MODE (USER REQUEST 10/30/2026) — CARE, NOT SURVEILLANCE
+
+**Framing:** friend who pays attention, never a judge. Not spyware, not clinical diagnosis, not character verdict.
+
+### 21.1 What it does (tier B)
+- Light usage-pattern profile (preferences, hours, kinds of content searched)
+- Looks for signs the person may be struggling — stress, isolation, worrying search patterns
+- Suggests help gently, without judging
+
+### 21.2 Hard rules
+- Does **not** label the person as malicious, dangerous, or ill
+- No verdict on character
+- Analysis stored **locally only**, visible to the user, deletable anytime
+- **Opt-in**, off by default
+- No data to studies, telemetry, or third parties — full privacy
+
+### 21.3 Rank
+- Class B
