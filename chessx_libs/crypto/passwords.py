@@ -8,6 +8,12 @@ from . import kdf
 
 T_COST, M_COST, PARALLELISM, HASH_LEN, SALT_LEN = 3, 65536, 4, 32, 16
 
+# CRY-03: ceilings for parameters read from a *stored* hash, so a tampered row (e.g. m=2^31) cannot
+# turn verify_password into a memory/CPU DoS. Override per call with verify_password(max_params=...).
+MAX_PARAMS = {"argon2id": {"m": 262144, "t": 10, "p": 16},   # 256 MiB, 4x/3x/4x our defaults
+              "scrypt": {"ln": 20, "r": 16, "p": 4}}
+MAX_SALT_LEN, MAX_HASH_LEN = 64, 64
+
 try:
     import argon2 as _argon2
     from argon2 import PasswordHasher as _PH
@@ -55,6 +61,8 @@ def hash_password(password, allow_fallback: bool = False) -> str:
 def _parse(phc):
     parts = phc.split("$")
     if len(parts) == 6 and parts[1] == "argon2id":
+        if parts[2] != "v=19":
+            raise ValueError("unsupported argon2 version")
         params = dict(kv.split("=") for kv in parts[3].split(","))
         return "argon2id", {k: int(v) for k, v in params.items()}, _unb64(parts[4]), _unb64(parts[5])
     if len(parts) == 5 and parts[1] == "scrypt":
@@ -63,16 +71,27 @@ def _parse(phc):
     raise ValueError("unrecognised password hash format")
 
 
-def verify_password(phc: str, password) -> bool:
-    """Constant-time verification. Returns False on mismatch or malformed hash."""
+def _within_limits(kind, p, salt, h, max_params=None):
+    lim = dict(MAX_PARAMS[kind], **((max_params or {}).get(kind, {})))
+    if set(p) - set(lim) - {"v"} or any(k not in p for k in lim):
+        return False
+    return (all(1 <= p[k] <= lim[k] for k in lim) and 8 <= len(salt) <= MAX_SALT_LEN
+            and 16 <= len(h) <= MAX_HASH_LEN)
+
+
+def verify_password(phc: str, password, max_params: dict = None) -> bool:
+    """Constant-time verification. Returns False on mismatch, malformed hash, or cost parameters above
+    MAX_PARAMS (checked BEFORE any hashing, for every backend)."""
     try:
         pw = _pw(password)
-        if _ph and phc.startswith("$argon2"):
+        kind, p, salt, h = _parse(phc)
+        if not _within_limits(kind, p, salt, h, max_params):
+            return False
+        if _ph and kind == "argon2id":
             try:
                 return _ph.verify(phc, pw)
             except (_argon2.exceptions.VerificationError, _argon2.exceptions.InvalidHashError):
                 return False
-        kind, p, salt, h = _parse(phc)
         if kind == "argon2id":
             got = kdf.argon2id(pw, salt, len(h), p["t"], p["m"], p["p"])
         else:
