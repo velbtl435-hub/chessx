@@ -78,15 +78,18 @@ class TestEvents(unittest.TestCase):
         self.assertLessEqual({"cabinet", "chess", "music", "ui"}, set(S.categories()))
 
     def test_every_event_renders(self):
+        # PERF-04: fast sweep (8 kHz, 1-bar music); CHESSX_SLOW_TESTS=1 renders at full quality
+        slow = os.environ.get("CHESSX_SLOW_TESTS") == "1"
         for e in S.list_events():
             with self.subTest(event=e):
-                x = S.render(e)
+                kw = {} if slow else {"rate": 8000, **({"bars": 1} if ".music." in e else {})}
+                x = S.render(e, **kw)
                 self.assertEqual(x.ndim, 1)
                 self.assertGreater(len(x), 0)
                 self.assertTrue(np.isfinite(x).all())
                 self.assertLessEqual(np.abs(x).max(), 1.0)
                 self.assertGreater(np.abs(x).max(), 0.01)
-                self.assertLess(len(x) / dsp.RATE, 10)
+                self.assertLess(len(x) / kw.get("rate", dsp.RATE), 10)
 
     def test_deterministic(self):
         for e in ("hdd", "keyboard", "floppy", "synthwave_loop", "chiptune_theme", "capture"):

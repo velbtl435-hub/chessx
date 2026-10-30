@@ -18,9 +18,11 @@ class TestRetroMusic(unittest.TestCase):
     def test_all_music_events_render(self):
         names = [n for n in events.list_events("retro") if ".music." in n]
         self.assertEqual(len(names), len(CHIPS) * len(M.STYLES) + 1)
+        slow = os.environ.get("CHESSX_SLOW_TESTS") == "1"  # PERF-04: full-quality sweep opt-in
+        rate, kw = (22050, {}) if slow else (8000, {"bars": 1})
         for n in names:
-            x = events.render(n, seed=2)
-            self.assertGreater(len(x), 22050, n)
+            x = events.render(n, rate=rate, seed=2, **kw)
+            self.assertGreater(len(x), rate, n)
             self.assertLessEqual(float(np.abs(x).max()), 0.9, n)
             self.assertTrue(np.isfinite(x).all(), n)
 
