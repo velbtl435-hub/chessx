@@ -11,7 +11,7 @@ LABELS = {
     "download": "Downloader (robots-aware)", "menu_voice": "Voice: speak",
     "menu_robot": "Voice: robot mode on/off", "menu_stt": "Voice: transcribe wav",
     "menu_sounds": "Sound effects", "menu_windows": "Windows layout",
-    "menu_pixel": "Interface: sprites / retro text", "menu_scheduler": "Scheduler status",
+    "menu_pixel": "Interface widgets (tabs / panel)", "menu_scheduler": "Scheduler status",
     "menu_audit": "Code audit", "menu_agents": "Agent Factory", "menu_tamagox": "TamagoX pet",
     "menu_intent": "Intent classifier", "language": "Language", "stats": "Stats",
     "menu_shell": "Free-text shell", "menu_selftest": "Selftest",
@@ -68,10 +68,21 @@ def _prof(app, ask):
 
 def _convert(app, ask):
     b = _imp("bases")
-    v = ask("value (auto-detect 0x/0b/0o)")
+    v = ask("number (0x/0b/0o auto) or text")
     if not v:
         return ""
-    return json.dumps(b.convert_all(v), ensure_ascii=False)
+    out = {}
+    try:
+        out["number"] = b.convert_all(v)
+    except Exception:
+        pass
+    try:  # bases.codecs (base32/58/64/85...) when present
+        c = importlib.import_module("chessx_libs.bases.codecs")
+        out["detected"] = c.detect(v)
+        out["text_codecs"] = c.encode_all(v.encode())
+    except ImportError:
+        pass
+    return json.dumps(out, ensure_ascii=False, indent=1, default=str)
 
 def _crypto(app, ask):
     c = _imp("crypto")
@@ -129,8 +140,8 @@ def _sounds(app, ask):
 def _windows(app, ask): return _imp("windows").Layout(60, 10).render()
 
 def _pixel(app, ask):
-    i = _imp("interface")
-    return i.render_sprite("knight") + "\n" + i.retro_text(ask("text") or "CHESSX")
+    i = _imp("interface")  # widgets only; sprites live in pixelart/ (entry 27)
+    return i.tabs(["search", "board", "math"], 0) + "\n" + i.panel("ChessX", [ask("text") or "hello"], 40)
 
 def _scheduler(app, ask): return str(_imp("scheduler").Scheduler().status())
 
@@ -185,7 +196,7 @@ def _pixelart(app, ask):
     p = _imp("pixelart")
     name = ask("sprite %s" % p.list_sprites()) or p.list_sprites()[0]
     if sys.stdout.isatty():
-        return "frames: %d" % p.animate(name, frames=16)
+        return "frames: %d" % p.animate(name)
     return "\n".join(p.render_frame(name, i, color=False) for i in range(2))
 
 
