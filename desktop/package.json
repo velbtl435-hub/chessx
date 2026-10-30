@@ -1,0 +1,21 @@
+{
+  "name": "chessx-desktop",
+  "private": true,
+  "version": "0.6.0",
+  "description": "ChessX desktop shell (Tauri + xterm.js) around the Python ChessX engine",
+  "scripts": {
+    "ui": "node scripts/copy-vendor.mjs",
+    "sidecar": "python3 scripts/build_sidecar.py",
+    "icon": "python3 scripts/render_icon.py && tauri icon assets/chessx-knight-1024.png",
+    "dev": "npm run ui && tauri dev",
+    "build": "npm run ui && tauri build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}

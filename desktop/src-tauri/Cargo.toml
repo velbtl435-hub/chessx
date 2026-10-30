@@ -1,0 +1,21 @@
+[package]
+name = "chessx-desktop"
+version = "0.6.0"
+description = "ChessX desktop app"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[lib]
+name = "chessx_desktop"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+tauri = { version = "2", features = [] }
+portable-pty = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+strip = true
+lto = true
