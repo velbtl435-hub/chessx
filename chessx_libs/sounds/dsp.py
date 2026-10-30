@@ -173,3 +173,13 @@ def write_wav(path, x, rate=RATE):
         w.setframerate(rate)
         w.writeframes(to_pcm16(x))
     return str(path)
+
+
+def mix(*clips):
+    """Sum clips of different lengths (zero-padded to the longest)."""
+    np = need_numpy()
+    n = max((len(c) for c in clips), default=0)
+    out = np.zeros(n)
+    for c in clips:
+        out[:len(c)] += c
+    return out
