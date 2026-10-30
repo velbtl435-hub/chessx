@@ -15,6 +15,7 @@ Work top to bottom. Finish and test each item before starting the next.
 
 4. ASCII browser mode with colored square tiles (ChessX's unique feature)
 5. Real integration of all packages in the main chessx.py with a unified menu
+23. C in WASI/WebAssembly: port C cores (search core, capstone for reversing, audio DSP) to wasm32-wasi, run in the browser, native fallback on desktop, dual-target build pipeline (see CHESSX_MASTER_LIST.md section 25)
 
 ## A
 

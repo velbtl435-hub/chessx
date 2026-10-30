@@ -518,3 +518,34 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 24.4 Rank
 - Class A — PRIORITY_LIST.md item #22
+
+---
+
+## 25. C IN WASI / WEBASSEMBLY (USER REQUEST 10/30/2026)
+
+### 25.1 Goal
+- Port ChessX's C modules to WASI (WebAssembly System Interface)
+- Run in the browser via WebAssembly; keep a native fallback on desktop
+- Status 10/30/2026: the repo has NO C modules yet (all Python). Step zero is writing the C cores below.
+
+### 25.2 What benefits (map)
+- Search core: tokenizing, ranking/fusion and dedupe of results in C -> WASM (fast in the browser, same code native)
+- Reversing: capstone (C disassembly library) compiled to WASM for the web build; desktop keeps the native capstone Python binding (already optional in chessx_libs/reversing/disasm.py)
+- Audio processing: procedural synthesis/DSP loops from section 24 (oscillators, filters, mixing) as a C kernel, numpy/scipy stays the desktop fallback
+- Candidates to evaluate later: crypto hashing, base conversion, bitboard/chess move generation
+
+### 25.3 Toolchain
+- Compile: clang with wasi-sdk (target wasm32-wasi); Emscripten where browser APIs are needed
+- Run/test outside the browser: wasmtime or wasmer (runtimes, used in CI and on desktop)
+- Browser: load the .wasm with a WASI shim in JS (web/ frontend)
+- Native fallback: the same C sources built with gcc/clang as shared libraries, called from Python via ctypes/cffi; pure-Python path if no compiler
+
+### 25.4 Build pipeline
+1. c/ directory with one subfolder per module + shared headers
+2. Makefile/CMake targets: native (.so/.dll/.dylib) and wasm (wasm32-wasi)
+3. Tests: same test vectors run against native, wasmtime and the Python fallback; outputs must match
+4. CI (GitHub Actions): build both targets, run tests, attach .wasm artifacts for web/
+5. Size/perf report per module (wasm-opt for size)
+
+### 25.5 Rank
+- Class S — PRIORITY_LIST.md item #23
