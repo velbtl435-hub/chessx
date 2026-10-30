@@ -33,6 +33,13 @@ def main(argv=None, factory: Factory = None):
     i = sp.add_parser("import"); i.add_argument("path")
     sp.add_parser("types")
     g = sp.add_parser("gen-type"); g.add_argument("description"); g.add_argument("--name"); g.add_argument("--from", dest="base")
+    sa = sp.add_parser("schedule", help="schedule an agent"); sa.add_argument("name")
+    sa.add_argument("--every", type=int, default=0, help="0 = one-shot"); sa.add_argument("--unit", default="second",
+                    help="second|minute|hour|day|week|month|year (PT ok: segundo, minuto, hora, dia, mes, ano)")
+    sa.add_argument("--at", default="now", help="now | +30s | +5m | HH:MM | YYYY-MM-DD HH:MM"); sa.add_argument("--times", type=int)
+    sp.add_parser("jobs")
+    ur = sp.add_parser("unschedule"); ur.add_argument("job_id")
+    rr = sp.add_parser("runner", help="run the scheduler loop"); rr.add_argument("--duration", type=float)
     a = ap.parse_args(argv)
     f = factory or Factory()
     if a.cmd == "create":
@@ -57,6 +64,25 @@ def main(argv=None, factory: Factory = None):
         gen = Generator(f.registry)
         t = gen.derive(a.base, a.name or a.description, description=a.description) if a.base else gen.from_description(a.description, a.name)
         out = t.to_dict()
+    elif a.cmd in ("schedule", "jobs", "unschedule", "runner"):
+        from dataclasses import asdict
+        from .schedule import AgentScheduler, parse_when
+        import os
+        sch = AgentScheduler(os.path.join(f.root, "schedule.json"), f.run)
+        if a.cmd == "schedule":
+            f.load(a.name)
+            out = asdict(sch.add(a.name, a.every, a.unit, parse_when(a.at), a.times))
+        elif a.cmd == "jobs":
+            out = [asdict(j) for j in sch.list()]
+        elif a.cmd == "unschedule":
+            sch.remove(a.job_id); out = "removed " + a.job_id
+        else:
+            print("runner: %d jobs, Ctrl+C to stop" % len(sch.jobs))
+            try:
+                sch.run(a.duration)
+            except KeyboardInterrupt:
+                pass
+            out = [asdict(j) for j in sch.list()]
     print(json.dumps(out, ensure_ascii=False, indent=1, default=str) if not isinstance(out, str) else out)
     return 0
 

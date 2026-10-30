@@ -4,4 +4,5 @@ from .core import Agent, Tree, Limits, AgentLimitError
 from .types import AgentType, Registry, Generator
 from .factory import Factory, AgentDefinition
 from .workspace import Workspace, sweep
-__all__ = ["Workspace", "sweep", "Factory", "AgentDefinition", "Agent", "Tree", "Limits", "AgentLimitError", "AgentType", "Registry", "Generator"]
+from .schedule import AgentScheduler, ScheduledJob, parse_when
+__all__ = ["AgentScheduler", "ScheduledJob", "parse_when", "Workspace", "sweep", "Factory", "AgentDefinition", "Agent", "Tree", "Limits", "AgentLimitError", "AgentType", "Registry", "Generator"]
