@@ -18,6 +18,7 @@ LABELS = {
     "menu_browser": "ASCII browser", "menu_pixelart": "Pixel-art critters",
     "menu_osint": "OSINT investigate (public sources)",
     "menu_retro": "Retro sounds (chip sfx / music)",
+    "menu_geo": "Geolocalização forense",
     "menu_title": "ChessX menu", "menu_unavailable": "unavailable", "menu_choose": "Choose",
     "quit": "Quit",
 }
@@ -276,6 +277,40 @@ def _retro(app, ask):
     return "played %s %s (%s)" % (chip, name, res)
 
 
+def _parse_shadow(text):
+    """'height length [bearing]' -> dict; blank -> None."""
+    parts = (text or "").replace(",", " ").split()
+    if not parts:
+        return None
+    if len(parts) not in (2, 3):
+        raise ValueError("shadow: height length [bearing]")
+    v = [float(x) for x in parts]
+    sh = {"height": v[0], "length": v[1]}
+    if len(v) == 3:
+        sh["bearing"] = v[2]
+    return sh
+
+
+def _geo(app, ask):
+    import json
+    g = _imp("geoforensics")
+    path = (ask("image path") or "").strip()
+    if not path:
+        return "no path"
+    try:
+        shadow = _parse_shadow(ask("shadow: height length [bearing] (blank = none)"))
+        d = g.analyze(path, shadow=shadow).to_dict()
+    except Exception as e:  # clean, no traceback
+        return "geoforensics error: %s: %s" % (type(e).__name__, e)
+    exif = d.pop("exif", {}) or {}
+    d["exif_tags"] = len(exif)
+    lines = ["consistency %s" % d.get("consistency")]
+    for k in ("gps", "time", "camera", "sun", "flags", "errors", "exif_tags", "disclaimer"):
+        if d.get(k) not in (None, {}, []):
+            lines.append("%s: %s" % (k, json.dumps(d[k], ensure_ascii=False, default=str)[:400]))
+    return "\n".join(lines)
+
+
 def _future(mod, fn_names):
     def run(app, ask):
         m = _imp(mod)
@@ -305,4 +340,5 @@ ENTRIES = [
     Entry("27", "pixelart", "menu_pixelart", _pixelart),
     Entry("28", "osint", "menu_osint", _osint),
     Entry("29", "sounds", "menu_retro", _retro),
+    Entry("30", "geoforensics", "menu_geo", _geo),
 ]
