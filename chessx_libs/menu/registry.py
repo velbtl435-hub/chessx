@@ -17,6 +17,7 @@ LABELS = {
     "menu_shell": "Free-text shell", "menu_selftest": "Selftest",
     "menu_browser": "ASCII browser", "menu_pixelart": "Pixel-art critters",
     "menu_osint": "OSINT investigate (public sources)",
+    "menu_retro": "Retro sounds (chip sfx / music)",
     "menu_title": "ChessX menu", "menu_unavailable": "unavailable", "menu_choose": "Choose",
     "quit": "Quit",
 }
@@ -252,6 +253,29 @@ def _osint(app, ask, client=None, getpass_fn=None):
     return "\n".join(lines)
 
 
+def _retro(app, ask):
+    s = _imp("sounds")
+    unknown = getattr(s, "UnknownSound", KeyError)
+    missing = getattr(s, "MissingDependency", ImportError)
+    try:
+        chips = s.list_retro()
+        if not chips:
+            return "needs numpy"
+        chip = (ask("chip %s" % sorted(chips)) or sorted(chips)[0]).strip()
+        groups = s.list_retro(chip)
+        kind = (ask("sfx or music") or "sfx").strip().lower()
+        names = groups.get(kind)
+        if names is None:
+            return "choose sfx or music"
+        name = (ask("%s %s" % (kind, names)) or names[0]).strip()
+        res = s.play_retro(chip, name)
+    except unknown as e:
+        return str(e.args[0]) if e.args else str(e)
+    except missing:
+        return "needs numpy"
+    return "played %s %s (%s)" % (chip, name, res)
+
+
 def _future(mod, fn_names):
     def run(app, ask):
         m = _imp(mod)
@@ -280,4 +304,5 @@ ENTRIES = [
     Entry("26", "browser", "menu_browser", _browser),
     Entry("27", "pixelart", "menu_pixelart", _pixelart),
     Entry("28", "osint", "menu_osint", _osint),
+    Entry("29", "sounds", "menu_retro", _retro),
 ]
