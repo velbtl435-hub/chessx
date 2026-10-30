@@ -3,7 +3,7 @@ from .strings import STRINGS
 from .translator import Translator
 
 # Keep in sync with strings.py: every language must have exactly this many keys.
-EXPECTED_KEYS = 61
+EXPECTED_KEYS = 84
 
 
 def run() -> bool:
