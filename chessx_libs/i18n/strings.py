@@ -1,4 +1,4 @@
-"""Translation table: 55 keys x (en, pt, ja)."""
+"""Translation table: 61 keys x (en, pt, ja)."""
 
 STRINGS = {
     "en": {
@@ -57,6 +57,12 @@ STRINGS = {
         'totp_code': '2FA code',
         'proxy': 'Proxy',
         'sandbox_detected': 'Sandbox detected',
+        'math_professor': 'PhD professor mode',
+        'math_draw_prompt': 'draw: type your equation (ASCII art), empty line to finish',
+        'math_check_prompt': 'check: paste your working, one step per line, empty line to finish',
+        'math_calc_prompt': 'calc: one statement per line, empty line to finish',
+        'math_system_prompt': 'system: one equation per line, empty line to finish',
+        'math_error': 'math error: {msg}',
     },
     "pt": {
         'welcome': 'Bem-vindo ao ChessX',
@@ -114,6 +120,12 @@ STRINGS = {
         'totp_code': 'Código 2FA',
         'proxy': 'Proxy',
         'sandbox_detected': 'Sandbox detectado',
+        'math_professor': 'Modo professor PhD',
+        'math_draw_prompt': 'draw: desenhe a equação (ASCII art), linha vazia para terminar',
+        'math_check_prompt': 'check: cole seus cálculos, um passo por linha, linha vazia para terminar',
+        'math_calc_prompt': 'calc: uma instrução por linha, linha vazia para terminar',
+        'math_system_prompt': 'system: uma equação por linha, linha vazia para terminar',
+        'math_error': 'erro matemático: {msg}',
     },
     "ja": {
         'welcome': 'ChessXへようこそ',
@@ -171,5 +183,11 @@ STRINGS = {
         'totp_code': '2FAコード',
         'proxy': 'プロキシ',
         'sandbox_detected': 'サンドボックスを検出',
+        'math_professor': '博士教授モード',
+        'math_draw_prompt': 'draw: 数式をアスキーアートで入力し、空行で終了',
+        'math_check_prompt': 'check: 計算を1行1ステップで貼り付け、空行で終了',
+        'math_calc_prompt': 'calc: 1行に1文、空行で終了',
+        'math_system_prompt': 'system: 1行に1つの方程式、空行で終了',
+        'math_error': '数学エラー: {msg}',
     },
 }

@@ -33,6 +33,10 @@ Python 3.8 or higher. No external dependencies.
 | aa | Disable auto-refresh |
 | q | Quit |
 
+## Math engine
+`prof`, `math`, `draw` (ASCII-art equations), `render`, `steps`, `check`, `export`, `translate`, `calc`.
+See [MATH_ENGINE.md](MATH_ENGINE.md).
+
 ## Structure
 
 - `chessx.py` — everything: engines, fusion, interface, persistence

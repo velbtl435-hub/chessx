@@ -20,6 +20,14 @@ def is_math_command(text):
     return _head(text)[0] in COMMANDS
 
 
+def _t(key, lang, **kw):
+    from ..i18n import Translator
+    try:
+        return Translator(lang)(key, **kw)
+    except ValueError:
+        return Translator("en")(key, **kw)
+
+
 def dispatch(text, lang="en", read_block=None):
     """Run a math shell command. read_block() returns the lines of a multi-line block."""
     head, rest = _head(text)
@@ -27,9 +35,9 @@ def dispatch(text, lang="en", read_block=None):
     try:
         return _HANDLERS[kind](rest if kind in MULTILINE else rest.strip(), lang, read_block)
     except MathError as e:
-        return "math error: %s" % e
+        return _t("math_error", lang, msg=e)
     except Exception as e:  # sympy can raise many things; report, never crash the shell
-        return "math error: %s: %s" % (type(e).__name__, e)
+        return _t("math_error", lang, msg="%s: %s" % (type(e).__name__, e))
 
 
 def _professor(rest, lang, _rb):
@@ -54,7 +62,7 @@ def _draw(rest, lang, read_block):
     from .ascii2d import interpret, render
     text = rest
     if not text.strip("\n ") and read_block:
-        print("draw: type your equation (ASCII art), empty line to finish")
+        print(_t("math_draw_prompt", lang))
         text = "\n".join(read_block())
     s, e = interpret(text)
     out = ["expr  : " + s, "sympy : " + sp.sstr(e), render(e)]
@@ -88,7 +96,7 @@ def _steps(rest, lang, read_block):
     if kind == "system":
         lines = [l for l in arg.split(";") if l.strip()]
         if not lines and read_block:
-            print("system: one equation per line, empty line to finish")
+            print(_t("math_system_prompt", lang))
             lines = read_block()
         out = st.system_steps(lines)
     elif kind in fns:
@@ -110,7 +118,7 @@ def _check(rest, lang, read_block):
     from .steps import check_work
     lines = [l for l in rest.replace(";", "\n").splitlines() if l.strip()]
     if not lines and read_block:
-        print("check: paste your working, one step per line, empty line to finish")
+        print(_t("math_check_prompt", lang))
         lines = read_block()
     _, report = check_work(lines)
     return "\n".join(report)
@@ -146,7 +154,7 @@ def _calc(rest, lang, read_block):
     from .langs import safe_eval
     text = rest
     if not text.strip() and read_block:
-        print("calc: one statement per line, empty line to finish")
+        print(_t("math_calc_prompt", lang))
         text = "\n".join(read_block())
     return "\n".join(safe_eval(text))
 
