@@ -615,3 +615,22 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 29.3 Rank
 - Class A
+
+---
+
+## 30. VIRTUAL MACHINE (USER REQUEST 10/30/2026)
+
+### 30.1 Goal
+- Run simple operating systems inside ChessX: Linux and other OSes, including retro ones (MS-DOS, Windows 95, AmigaOS, etc.)
+
+### 30.2 Approach
+- Prefer ready open-source emulators, integrated via a ChessX launcher: QEMU (x86/ARM/RISC-V, Linux, Win9x), Bochs (x86, debugging), DOSBox / DOSBox-X (MS-DOS, Win 3.x/95), WinUAE / FS-UAE (Amiga; Kickstart ROMs must be legally owned by the user)
+- Unified VM manager: create/start/stop, disk images, snapshots, shared folders, terminal/serial console view
+- Ties into the sandbox (section 29) for running untrusted guests
+- Later option: develop a ChessX-native core (own emulator/hypervisor), linked to the OS-like architecture vision (section 16) and RISC-V plans
+
+### 30.3 Legal
+- Ship no copyrighted OS images or ROMs; user supplies their own licensed media
+
+### 30.4 Rank
+- Class A
