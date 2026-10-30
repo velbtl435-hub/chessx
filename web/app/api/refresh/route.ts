@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   if (!secret) return Response.json({ error: "CRON_SECRET not configured" }, { status: 503 });
   if (!safeEqual(req.headers.get("authorization") ?? "", `Bearer ${secret}`))
     return Response.json({ error: "unauthorized" }, { status: 401 });
-  revalidateTag("chessx-feed");
+  revalidateTag("chessx-feed", { expire: 0 });
   const feed = await getFeed();
   return Response.json({ ok: true, refreshed: feed.map(f => ({ query: f.query, results: f.results.length, errors: f.errors })), at: new Date().toISOString() });
 }
