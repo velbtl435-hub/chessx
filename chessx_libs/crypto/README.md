@@ -26,3 +26,9 @@ Use these for stored passwords; use `kdf.argon2id` only to derive raw keys (e.g.
 `chacha20_poly1305_*` / `aes_gcm_*` names dispatch to it (same outputs). Prefer the high-level API:
 `seal(key, pt, aad=b"", alg="chacha20-poly1305"|"aes-256-gcm")` -> `CX|ver|alg|nonce12|ct|tag16` (random nonce,
 header authenticated), `open_sealed(key, blob, aad)` raises `DecryptError`. Rotate a key before ~2^32 messages.
+
+## Stored data (envelope.py)
+`seal_box(recipient_pk, data, context)` / `open_box(recipient_sk, blob, context)`: ephemeral X25519 + HKDF-SHA256 + AEAD,
+versioned `CXSB` header, `context` bound as AAD (anonymous sender; no sender authentication -- sign separately if needed).
+`envelope_encrypt(kek, data, context)` / `envelope_decrypt` / `rewrap_envelope(old, new, blob)` (KEK rotation without
+re-encrypting data): random per-object DEK wrapped by the KEK, `CXEV` header.
