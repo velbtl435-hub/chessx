@@ -1,0 +1,3 @@
+# OPTIONAL: reversing extras (large; angr pulls in hundreds of MB). ChessX works without them.
+r2pipe            # needs the radare2 binary installed separately
+angr

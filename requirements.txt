@@ -1,0 +1,26 @@
+# ChessX v0.6 dependencies.
+# The core of ChessX runs on the Python 3 stdlib alone; every package below is detected
+# at runtime and has a fallback. "Required" here means required for the full feature set.
+#   pip install -r requirements.txt
+#   pip install -r requirements-optional.txt   # heavy reversing extras
+
+# --- required: voice / STT ---
+pyttsx3
+vosk
+# --- required: search / scraping ---
+ddgs
+requests
+beautifulsoup4
+curl_cffi
+scrapy
+playwright        # then run: python -m playwright install chromium
+# --- required: crypto ---
+cryptography
+argon2-cffi
+# --- required: terminal UI ---
+rich
+asciimatics
+urwid
+# --- required: media / numeric ---
+pillow
+numpy

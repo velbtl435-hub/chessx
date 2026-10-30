@@ -1,0 +1,8 @@
+# never commit models or audio
+*.wav
+vosk-model-*/
+models/
+__pycache__/
+*.pyc
+chessx_results.json
+chessx_results.csv
