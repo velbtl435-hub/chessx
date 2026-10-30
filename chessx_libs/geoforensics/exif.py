@@ -179,14 +179,26 @@ def xmp_coord(s):
 
 
 # ---------------------------------------------------------------- containers
+MAX_FILE = 64 * 1024 * 1024       # A4: read at most this much of a file
+MAX_INFLATE = 4 * 1024 * 1024     # cap for compressed PNG iTXt XMP
+XMP_SCAN = 4 * 1024 * 1024        # XMP regex scans only the first/last 4 MB
+
+
 def read_metadata(src):
-    """Path or bytes -> Metadata. Never raises on malformed input (except unreadable path)."""
+    """Path or bytes -> Metadata. Never raises on malformed input (except unreadable path).
+    Input beyond MAX_FILE is ignored and reported in md.errors."""
+    md = Metadata()
     if isinstance(src, (bytes, bytearray)):
         data = bytes(src)
+        if len(data) > MAX_FILE:
+            md.errors.append(f"input truncated: {len(data)} bytes > MAX_FILE {MAX_FILE}")
+            data = data[:MAX_FILE]
     else:
         with open(src, "rb") as f:
-            data = f.read()
-    md = Metadata()
+            data = f.read(MAX_FILE + 1)
+        if len(data) > MAX_FILE:
+            md.errors.append(f"file truncated: larger than MAX_FILE {MAX_FILE} bytes")
+            data = data[:MAX_FILE]
     try:
         if data[:2] == b"\xff\xd8":
             md.source = "jpeg"
@@ -202,10 +214,13 @@ def read_metadata(src):
             _png(data, md)
         else:
             md.source = "unknown"
-            _pillow(src, md)
-        m = re.search(rb"<x:xmpmeta.*?</x:xmpmeta>", data, re.S)  # sidecar-style / any container
-        if m and not md.xmp:
-            md.xmp = parse_xmp(m.group(0))
+            _pillow(data, md)  # capped bytes, never the raw path
+        if not md.xmp:  # sidecar-style / any container; bounded scan (head + tail)
+            for chunk in ((data,) if len(data) <= 2 * XMP_SCAN else (data[:XMP_SCAN], data[-XMP_SCAN:])):
+                m = re.search(rb"<x:xmpmeta.*?</x:xmpmeta>", chunk, re.S)
+                if m:
+                    md.xmp = parse_xmp(m.group(0))
+                    break
     except Exception as ex:  # robustness: report, don't crash
         md.errors.append(f"parse error: {type(ex).__name__}: {ex}")
     return md
@@ -244,7 +259,13 @@ def _png(data, md):
             rest = body[len(b"XML:com.adobe.xmp\x00"):]
             comp = rest[0] if rest else 0
             txt = rest[2:].split(b"\x00", 2)[-1]
-            md.xmp.update(parse_xmp(zlib.decompress(txt) if comp else txt))
+            if comp:
+                d = zlib.decompressobj()
+                out = d.decompress(txt, MAX_INFLATE)
+                if d.unconsumed_tail:
+                    md.errors.append(f"PNG iTXt XMP exceeds {MAX_INFLATE} bytes inflated; truncated")
+                txt = out
+            md.xmp.update(parse_xmp(txt))
         if typ == b"IEND":
             break
         i += 12 + ln
@@ -258,13 +279,18 @@ def _pillow(src, md):
         return
     try:
         import io
-        img = Image.open(io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else src)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)  # treat as error
+            img = Image.open(io.BytesIO(src) if isinstance(src, (bytes, bytearray)) else src)
         raw = img.info.get("exif")
         if raw:
             md.source = "pillow"
             md.tags.update(parse_tiff(raw[6:] if raw[:6] == b"Exif\x00\x00" else raw, md.errors))
         if img.info.get("xmp"):
             md.xmp.update(parse_xmp(img.info["xmp"]))
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as ex:
+        md.errors.append(f"Pillow: decompression bomb rejected: {ex}")
     except Exception as ex:
         md.errors.append(f"Pillow: {ex}")
 

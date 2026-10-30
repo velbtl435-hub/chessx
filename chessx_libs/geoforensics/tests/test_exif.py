@@ -111,3 +111,42 @@ class TestMalformed(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAuditBounds(unittest.TestCase):
+    """A4/A5: bounded reads, inflate and XMP scan; real layout check."""
+
+    def test_file_cap(self):
+        import tempfile, os
+        from chessx_libs.geoforensics import exif as X
+        old = X.MAX_FILE
+        X.MAX_FILE = 1000
+        try:
+            md = X.read_metadata(b"\x00" * 5000)
+            self.assertTrue(any("MAX_FILE" in e for e in md.errors))
+            with tempfile.NamedTemporaryFile(delete=False) as f:
+                f.write(b"\x00" * 5000)
+            try:
+                md = X.read_metadata(f.name)
+                self.assertTrue(any("MAX_FILE" in e for e in md.errors))
+            finally:
+                os.remove(f.name)
+        finally:
+            X.MAX_FILE = old
+
+    def test_png_itxt_bomb_bounded(self):
+        import struct, zlib
+        from chessx_libs.geoforensics import exif as X
+        xmp = b"<x:xmpmeta>" + b" " * (8 * 1024 * 1024) + b"</x:xmpmeta>"
+        body = b"XML:com.adobe.xmp\x00" + b"\x01\x00" + b"\x00\x00" + zlib.compress(xmp, 9)
+        chunk = lambda t, b: struct.pack(">I4s", len(b), t) + b + struct.pack(">I", zlib.crc32(t + b))
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"iTXt", body) + chunk(b"IEND", b"")
+        md = X.read_metadata(png)
+        self.assertTrue(any("iTXt" in e for e in md.errors), md.errors)
+
+    def test_synth_layout_raises(self):
+        import inspect
+        from chessx_libs.geoforensics import synth
+        src = inspect.getsource(synth)
+        self.assertNotIn("assert len(buf)", src)
+        self.assertIn("RuntimeError", src)

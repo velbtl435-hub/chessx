@@ -36,7 +36,8 @@ def build_tiff(ifd0=None, exif=None, gps=None, endian="<"):
         ifd0[0x8825] = (4, off_gps)
     for entries, off in ((ifd0, off0), (exif, off_exif), (gps, off_gps)):
         if entries or off == off0:
-            assert len(buf) == off
+            if len(buf) != off:  # A5: real check, survives python -O
+                raise RuntimeError(f"TIFF layout mismatch: buffer at {len(buf)}, expected IFD at {off}")
             buf += _ifd(e, entries, off)
     return bytes(buf)
 
