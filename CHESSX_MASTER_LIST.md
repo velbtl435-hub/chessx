@@ -634,3 +634,21 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 30.4 Rank
 - Class A
+
+---
+
+## 31. PHYSICAL DECRYPTION KEY (USER REQUEST 10/30/2026)
+
+### 31.1 Goal
+- Support a USB token or YubiKey as a decryption factor: without the physical key the data is inaccessible
+
+### 31.2 Implementation
+- YubiKey / FIDO2: hmac-secret extension or YubiKey challenge-response (HMAC-SHA1) to derive/unwrap the data key
+- OpenPGP card / PIV smart card as an alternative backend
+- Generic USB token: key file on a removable drive, bound to the device serial, combined with a passphrase
+- Key wrapping integrates with the crypto keystore (Argon2id + AEAD, section 18 / crypto/)
+- Recovery: optional backup key or second token registered at setup; clear warning that losing all keys means losing the data
+- Pairs with Sam's physical-key auth plans for the hardened Cybertronics machine
+
+### 31.3 Rank
+- Class A
