@@ -219,3 +219,40 @@ def test_yara_fake_engine_match_offsets_and_attribution(monkeypatch, tmp_path):
     assert calls == {"includes": False, "timeout": tr.YARA_TIMEOUT}
     assert m["author"] == "Florian Roth" and m["evidence"][0]["offset"] == 4 and t["verdict"] == "likely_malicious"
     assert t["engines"]["yara"] and t["engines"]["yara_rules_loaded"] == 1
+
+
+# ---- stage E: optional false-positive corpus over system binaries (never executed, read-only)
+def _fp_files():
+    if sys.platform.startswith("win"):
+        pytest.skip("FP corpus: Unix only")
+    dirs = [d for d in ("/bin", "/usr/bin") if os.path.isdir(d)]
+    if not dirs:
+        pytest.skip("FP corpus: /bin and /usr/bin missing")
+    files = []
+    for d in dirs:
+        for n in sorted(os.listdir(d)):
+            p = os.path.join(d, n)
+            if os.path.isfile(p) and not os.path.islink(p) and os.path.getsize(p) < 8 << 20:
+                files.append(p)
+    full = os.environ.get("CHESSX_TRIAGE_FP") == "1"  # opt-in for the whole corpus
+    return files if full else files[:: max(1, len(files) // 12)][:12]
+
+
+def test_fp_corpus_system_binaries():
+    from chessx_libs.reversing.detective import investigate
+    files = _fp_files()
+    if not files:
+        pytest.skip("FP corpus empty")
+    allow = {l.split()[0] for l in tr.build_allowlist(sorted({os.path.dirname(f) for f in files}))}
+    likely = 0
+    for f in files:
+        try:
+            r = investigate(f, expanded=True)
+        except OSError:
+            continue
+        data = open(f, "rb").read()
+        raw = tr.triage(r, data, allowlist=set())
+        al = tr.triage(r, data, allowlist=allow)
+        assert al["verdict"] != "likely_malicious" and al["evidence"]  # allowlisted ⇒ never likely
+        likely += raw["verdict"] == "likely_malicious"
+    assert likely / len(files) <= 0.10  # loose ratio, never exact counts

@@ -69,3 +69,46 @@ foi construído — **somente estático**:
 
 Fallback stdlib: sem r2/capstone/angr o resumo ainda sai (headers + strings + `.comment`/Rich).
 CLI: seção `--- Reversão (#24) ---` no modo texto.
+
+## Triagem defensiva de malware (#25)
+
+> **Aviso: estas heurísticas NÃO são um antivírus.** São sinais estáticos para priorizar
+> análise humana. Um `clean` não prova que o arquivo é seguro; um `likely_malicious`
+> não prova que é malware. Todo veredito vem sempre com `score` e `evidence`.
+
+- **Só estático:** a amostra **nunca** é executada; sem detonation, sem rede, sem upload a terceiros.
+- Spec: `docs/specs/MALWARE_TRIAGE.md`.
+- Saída: chave `triage` **no fim** de `investigate()` (depois de `reversal_summary`):
+  `score` (0–100), `verdict` (`clean` 0–14 / `suspicious` 15–39 / `likely_malicious` ≥40),
+  `evidence` (resumo), `matched[]` (id, severity, weight, engine, evidence com offsets),
+  `engines` (chessx / yara), `allowlisted`, `limits`, `errors`.
+- CLI: `python -m chessx_libs.reversing <arquivo>` mostra a seção `--- Triagem ---`;
+  `python -m chessx_libs.reversing.triage <arquivo> [--json] [--rules DIR] [--list-rules]`.
+- Regras embutidas: `rules/builtin/*.toml` (`cx.*`, MIT): packing/entropia, combos de imports
+  (injeção, persistência, anti-debug, crypto+rede, LSASS), wrappers, strings tipo C2
+  (URL de painel, IP:porta, User-Agent antigo, `.onion`) e `cx.test.eicar` (só por hash).
+- Regras extras: `CHESSX_TRIAGE_RULES=dir1:dir2` (TOML/JSON ChessX e, se `yara-python`
+  estiver instalado, `.yar`/`.yara`; sem includes, timeout 5 s, scan até 32 MiB).
+  Sem `yara-python` tudo funciona com `engines.yara=false`.
+- Allowlist: `rules/allowlist.sha256` + `CHESSX_TRIAGE_ALLOWLIST=arquivo`; gerar com
+  `python -m chessx_libs.reversing.triage --build-allowlist /bin /usr/bin > minha.sha256`.
+
+### Testes e métricas
+- Só binários **sintéticos** (compilados no teste, nunca executados) e EICAR **montado em
+  tempo de teste** a partir de fragmentos, gravado em arquivo temporário e apagado ao fim —
+  a string EICAR não existe no repositório (há teste que verifica isso).
+- Corpus de falso positivo `/bin` + `/usr/bin`: opcional, pulado no Windows ou se os
+  diretórios não existirem; amostra pequena por padrão, corpus inteiro com
+  `CHESSX_TRIAGE_FP=1`. Só verifica "nenhum `likely_malicious` em binário allowlisted" e
+  razão frouxa (≤10 %), nunca contagens exatas.
+- Medição local (2026-10-30, Debian, 60 binários de `/usr/bin`): 0 % `suspicious`/
+  `likely_malicious`; p95 ≈ 0,5 s por arquivo (investigate completo, sem YARA).
+
+### Pacotes de regras de terceiros
+| Fonte | Licença | Uso no ChessX |
+|---|---|---|
+| ChessX `cx.*` | MIT | embutido |
+| ReversingLabs `reversinglabs-yara-rules` | MIT | opcional (download manual; manter LICENSE/NOTICE) |
+| Neo23x0 `signature-base` | DRL 1.1 | opcional (download manual); `author` preservado no match |
+| Yara-Rules `rules` | GPL-2.0 | só via caminho local do usuário; nunca embutido |
+| Elastic `protections-artifacts` | Elastic License 2.0 | evitado |
