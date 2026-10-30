@@ -98,6 +98,13 @@ def disasm_x86(code: bytes, base: int = 0, use_capstone: bool = True) -> list:
         return [f"{i.address:08x}: {i.mnemonic} {i.op_str}".rstrip() for i in md.disasm(code, base)]
     except ImportError:
         pass
+    if use_capstone:  # same engine via the vendored C module (c/capstone), same output format
+        try:
+            from ..native import capstone as _ncs
+            if _ncs._lib() is not None:
+                return [f"{a:08x}: {m} {o}".rstrip() for a, _, m, o in _ncs.disasm_native(code, 3, 8, base)]
+        except Exception:
+            pass
     out, i = [], 0
     while i < len(code):
         b = code[i]

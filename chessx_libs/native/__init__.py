@@ -46,8 +46,8 @@ def load(module):
 
 
 def status():
-    return {m: (find(m) if load(m) else None) for m in ("hello_fusion", "search")}
+    return {m: (find(m) if load(m) else None) for m in ("hello_fusion", "search", "capstone")}
 
 
-from . import hello_fusion, search  # noqa: E402
-__all__ = ["load", "find", "search_dirs", "status", "hello_fusion", "search", "EXT", "ABI_VERSION"]
+from . import hello_fusion, search, capstone  # noqa: E402
+__all__ = ["load", "find", "search_dirs", "status", "hello_fusion", "search", "capstone", "EXT", "ABI_VERSION"]
