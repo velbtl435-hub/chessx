@@ -134,8 +134,17 @@ class TestRobots(Base):
 
     def test_fail_open_explicit(self):
         dead = "http://127.0.0.1:9/x"  # discard port: connection refused
-        self.assertFalse(RobotsCache(fail_open=False).allowed(dead))
-        self.assertTrue(RobotsCache(fail_open=True).allowed(dead))
+        self.assertFalse(RobotsCache(fail_open=False, allow_private=True).allowed(dead))
+        self.assertTrue(RobotsCache(fail_open=True, allow_private=True).allowed(dead))
+
+    def test_robots_netguard(self):
+        # private host without opt-in: never fetched, not allowed even with fail_open
+        rc = RobotsCache(fail_open=True)
+        self.assertFalse(rc.allowed(self.base + "/img"))
+        self.assertEqual(rc._cache, {})
+        rc = RobotsCache(allow_private=True)
+        self.assertFalse(rc.allowed(self.base + "/private/x.png"))
+        self.assertTrue(rc.allowed(self.base + "/img"))
 
 
 class TestRateLimit(Base):

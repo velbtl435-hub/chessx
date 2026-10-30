@@ -30,7 +30,8 @@ class Downloader:
         allow_private=True is an explicit opt-in (local test servers)."""
         self.dest, self.ua, self.max_bytes, self.timeout = dest, user_agent, max_bytes, timeout
         self.allow_private = allow_private
-        self.robots = RobotsCache(user_agent, fail_open=robots_fail_open) if respect_robots else None
+        self.robots = RobotsCache(user_agent, fail_open=robots_fail_open, timeout=timeout,
+                                  allow_private=allow_private) if respect_robots else None
         self.limiter = limiter or RateLimiter(min_interval)
         self._name_lock = threading.Lock()
 
