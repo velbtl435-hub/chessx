@@ -164,12 +164,29 @@ class ChessX:
                 print(out)
 
 
+SKIP_NO_CRYPTOGRAPHY = "skipped: cryptography não instalado — pulado"
+
+
+def _aead_unavailable():
+    try:
+        from chessx_libs.crypto import AEADUnavailable
+        return AEADUnavailable
+    except Exception:  # crypto package missing/broken: match nothing extra
+        return ()
+
+
+def selftest_passed(res):
+    return all(v == "ok" or v.startswith("skipped") for v in res.values())
+
+
 def selftest():
     import tempfile
     ok = {}
     def check(name, fn):
         try:
             fn(); ok[name] = "ok"
+        except _aead_unavailable():  # CRY-01: no constant-time backend -> skip, never fallback
+            ok[name] = SKIP_NO_CRYPTOGRAPHY
         except Exception as e:
             ok[name] = "FAIL: %r" % e
     check("chess_ai", lambda: [classify("open 3").name == "open" or 1 / 0,
@@ -249,7 +266,7 @@ def main(argv=None):
         res = selftest()
         for k, v in res.items():
             print("%-10s %s" % (k, v))
-        return 0 if all(v == "ok" for v in res.values()) else 1
+        return 0 if selftest_passed(res) else 1
     app = ChessX(a.lang, a.mute, a.json)
     if a.query:
         print(app.handle(a.query))

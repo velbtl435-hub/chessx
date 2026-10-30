@@ -91,9 +91,15 @@ def _crypto(app, ask):
     c = _imp("crypto")
     s = c.new_secret()
     k, n = os.urandom(32), os.urandom(12)
-    ok = c.chacha20_poly1305_decrypt(k, n, c.chacha20_poly1305_encrypt(k, n, b"chessx")) == b"chessx"
+    try:  # CRY-01: never use allow_fallback here
+        rt = "ok" if c.chacha20_poly1305_decrypt(k, n, c.chacha20_poly1305_encrypt(k, n, b"chessx")) == b"chessx" \
+            else "FAIL"
+    except getattr(c, "AEADUnavailable", ()):
+        rt = AEAD_SKIPPED
     return "TOTP secret %s -> code %s | chacha20-poly1305 roundtrip %s | argon2 backend %s" % (
-        s, c.totp(s), "ok" if ok else "FAIL", argon2_label(c.ARGON2_BACKEND))
+        s, c.totp(s), rt, argon2_label(c.ARGON2_BACKEND))
+
+AEAD_SKIPPED = "cryptography não instalado — pulado"
 
 ARGON2_LABELS = {"argon2-cffi": "argon2-cffi", "cryptography": "cryptography (Argon2id)",
                  "none": "none (Argon2id unavailable)"}
