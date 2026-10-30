@@ -19,6 +19,7 @@ from .._deps import need_numpy
 from .. import dsp
 from .chips import chip as get_chip
 from .crush import era_crush, stereo
+from .base import Chip
 
 # ---------------------------------------------------------------- song model
 @dataclass
@@ -45,6 +46,7 @@ class Song:
     loop: bool = True
     title: str = ""
     style: str = ""
+    sid_filter: dict = None     # SID global filter: {mode, res, cutoff | from/to, voices: [routed channel names]}
 
     @property
     def row_dur(self):
@@ -250,14 +252,50 @@ def _channel_segments(song, ch, loops):
     return out
 
 
+def _sid_bus(song, c, rate, seed, loops, total):
+    """Real SID routing: voices with their filter-enable bit set are summed into ONE multimode filter;
+    the others bypass it. Returns (filtered_bus or None, set of routed channel names)."""
+    np = need_numpy()
+    f = song.sid_filter
+    routed = [ch for ch in song.channels if ch.name in set(f.get("voices", ()))]
+    vs = []
+    for i, ch in enumerate(song.channels):
+        if ch in routed and ch.vol > 0:
+            segs = [{k: v for k, v in sg.items() if k != "filter"} for sg in _channel_segments(song, ch, loops)]
+            if any(sg["wave"] != "rest" for sg in segs):
+                vs.append(Chip.render(c, segs, rate, seed + i) * ch.vol)
+    if not vs:
+        return None, {ch.name for ch in routed}
+    x = dsp.mix(*vs)
+    n = len(x)
+    cut = cutoff_curve(song, f, n, rate, loops)
+    from .sid import svf
+    y = svf(x, cut, f.get("res", 0.6), f.get("mode", "lp"), rate)
+    return dsp.normalize(y, float(np.abs(x).max())), {ch.name for ch in routed}  # keep pre-filter level
+
+
+def cutoff_curve(song, f, n, rate, loops=1):
+    """Cutoff per sample: from/to exponential sweep over the whole render, or fixed 'cutoff'."""
+    np = need_numpy()
+    c0 = float(f.get("from", f.get("cutoff", 2000)))
+    c1 = float(f.get("to", c0))
+    return c0 * (c1 / c0) ** np.linspace(0, 1, n)
+
+
 def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=False):
     """Render a Song to mono float array (or (n,2) if stereo_out). Deterministic, peak <= 0.89."""
     np = need_numpy()
     c = get_chip(song.chip)
     total = int(round(song.duration(loops) * rate))
     tracks, pans = [], []
+    routed = set()
+    if song.chip == "sid" and song.sid_filter:
+        bus, routed = _sid_bus(song, c, rate, seed, loops, total)
+        if bus is not None:
+            tracks.append(bus)
+            pans.append(0.0)
     for i, ch in enumerate(song.channels):
-        if ch.vol <= 0:
+        if ch.vol <= 0 or ch.name in routed:
             continue
         segs = _channel_segments(song, ch, loops)
         if not any(s["wave"] != "rest" for s in segs):
@@ -415,12 +453,13 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
     if chip_name == "sid" and style == "battle":  # SID flavour: ring-modulated lead, hard-synced bass
         roles["lead"][0].opts.update(shape="triangle", ring=1.5)
         roles["bass"][0].opts.update(sync=1.98)
-    if chip_name == "sid":  # SID resonant filter with cutoff sweep (per-channel automation)
-        roles["bass"][0].opts["filter"] = SID_FILTER[style]
-        if style == "chess_thinking":
-            roles["lead"][0].opts["filter"] = {"from": 600, "to": 2500, "res": 0.7, "mode": "bp"}
+    sid_filter = None
+    if chip_name == "sid":  # ONE global SID filter; bass (and lead for chess_thinking) have their filter bit set
+        voices = [roles["bass"][0].name] + ([roles["lead"][0].name] if style in ("chess_thinking", "battle") else [])
+        sid_filter = dict(SID_FILTER[style], voices=voices)
     return Song(chip=chip_name, bpm=st["bpm"], speed=st["speed"], channels=chans, patterns=patterns,
-                order=order, loop=style not in ("game_over", "victory"), title=f"{style} #{seed}", style=style)
+                order=order, loop=style not in ("game_over", "victory"), title=f"{style} #{seed}", style=style,
+                sid_filter=sid_filter)
 
 
 def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1, loop=False):

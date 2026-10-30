@@ -104,9 +104,14 @@ from chessx_libs.sounds.retro import render_sfx; x = render_sfx("fm", "explosion
 Unknown chip → `UnknownSound` listing valid chips; unknown name → `UnknownSound` listing that chip's names.
 Without numpy: `list_retro(...)` returns `{}` (also for a chip argument) and `play_retro`/`render_retro` raise `MissingDependency`.
 
+### SID global filter
+Like the real chip, the SID has ONE multimode filter (LP/BP/HP + resonance) shared by its 3 voices; each voice has a
+filter-enable bit. `SID().voices3(v1, v2, v3, filter={"mode": "lp", "res": .6, "from": 300, "to": 3500, "route": (1, 1, 0)})`
+and `Song.sid_filter = {..., "voices": ["voice2"]}` (used by `compose("sid", ...)`) sum the routed voices into that single
+filter; unrouted voices bypass it.
+
 ## Backlog (retro)
 
-* Global SID filter over all 3 voices via `SID.voices3(filter=...)` (now per-channel filter sweeps).
 * Filter/echo automation over time (per row/pattern), not one sweep or fixed echo per channel.
 * True OPL rhythm mode (BD/SD/TT/CY/HH from shared operators) instead of rhythm-style kit.
 * Loop tail crossfade (echo/reverb tail wrapping into the next pass) for seamless loops.

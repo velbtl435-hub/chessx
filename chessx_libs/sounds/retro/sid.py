@@ -106,10 +106,22 @@ class SID(Chip):
         return x
 
     def voices3(self, v1, v2, v3, rate=dsp.RATE, seed=0, filter=None):
-        """Mix three voices (each a segment list), optional global filter."""
+        """Mix three voices (segment lists) like the real SID: ONE shared multimode filter; each voice's
+        filter-enable bit is filter['route'] (default (1,1,1)); unrouted voices bypass the filter.
+        filter: {mode lp|bp|hp, res 0..1, cutoff | from/to (exp sweep)}."""
         np = need_numpy()
-        vs = [Chip.render(self, v, rate, seed + k) for k, v in enumerate((v1, v2, v3)) if v]
-        x = dsp.mix(*vs) / max(1, len(vs))
-        if filter:
-            x = svf(x, filter.get("cutoff", 2000), filter.get("res", 0.5), filter.get("mode", "lp"), rate)
-        return dsp.normalize(x)
+        vs = [Chip.render(self, v, rate, seed + k) if v else None for k, v in enumerate((v1, v2, v3))]
+        if not filter:
+            live = [v for v in vs if v is not None]
+            return dsp.normalize(dsp.mix(*live) / max(1, len(live))) if live else np.zeros(0)
+        route = tuple(filter.get("route", (1, 1, 1)))
+        n = max((len(v) for v in vs if v is not None), default=0)
+        fin, byp = np.zeros(n), np.zeros(n)
+        for v, r in zip(vs, route + (1,) * 3):
+            if v is not None:
+                (fin if r else byp)[:len(v)] += v / 3
+        c0 = float(filter.get("from", filter.get("cutoff", 2000)))
+        cut = c0 * (float(filter.get("to", c0)) / c0) ** np.linspace(0, 1, n) if n else c0
+        if fin.any():
+            fin = svf(fin, cut, filter.get("res", 0.5), filter.get("mode", "lp"), rate)
+        return dsp.normalize(fin + byp)

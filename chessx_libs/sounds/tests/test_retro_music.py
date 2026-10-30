@@ -83,10 +83,29 @@ class TestRetroMusic(unittest.TestCase):
 
     def test_sid_filter_sweep(self):
         s = M.compose("sid", "title", 1, bars=1)
-        f = {c.role: c.opts for c in s.channels}["bass"]["filter"]
+        f = s.sid_filter
         self.assertNotEqual(f["from"], f["to"])
+        self.assertEqual(f["voices"], ["voice2"])  # bass voice has its filter bit set
+        self.assertNotIn("filter", {c.role: c.opts for c in s.channels}["bass"])
         x = M.render_song(s)
         self.assertLessEqual(float(np.abs(x).max()), 0.9)
+
+    def test_sid_global_filter_routing(self):
+        from chessx_libs.sounds.retro.sid import SID
+        sid = SID()
+        v = [{"wave": "tone", "shape": "saw", "f0": f, "dur": 0.2} for f in (220, 330, 440)]
+        dry = sid.voices3([v[0]], [v[1]], [v[2]])
+        lp = sid.voices3([v[0]], [v[1]], [v[2]], filter={"cutoff": 300, "res": 0.2, "route": (1, 1, 1)})
+        part = sid.voices3([v[0]], [v[1]], [v[2]], filter={"cutoff": 300, "res": 0.2, "route": (1, 0, 0)})
+        hf = lambda x: float(np.abs(np.diff(x)).mean())
+        self.assertLess(hf(lp), hf(part))
+        self.assertLess(hf(part), hf(dry) * 1.01)
+        s = M.compose("sid", "title", 1, bars=1)
+        a = M.render_song(s, crush=False)
+        s.sid_filter = dict(s.sid_filter, voices=["voice1", "voice2", "voice3"])
+        b = M.render_song(s, crush=False)
+        self.assertFalse(np.array_equal(a, b))
+        self.assertLessEqual(float(np.abs(b).max()), 0.9)
 
     def test_loop_option(self):
         a = events.render("retro.gb.music.victory", seed=1)
