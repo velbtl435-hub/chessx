@@ -23,15 +23,15 @@ class MediaQueue:
 
     Retries on 429/5xx/network errors with exponential backoff (backoff * 2**attempt,
     capped at max_backoff); a Retry-After header overrides the computed delay (capped too).
-    Robots-disallowed and size-limited downloads are not retried.
+    Robots-disallowed, size-limited and netguard-blocked (SSRF policy) downloads are not retried.
     """
     def __init__(self, dest="downloads", workers=4, per_host_interval=1.0, retries=3, backoff=0.5,
                  max_backoff=30.0, max_bytes=None, respect_robots=True, robots_fail_open=False,
-                 user_agent="ChessX", timeout=30):
+                 user_agent="ChessX", timeout=30, allow_private=False):
         self.workers, self.retries, self.backoff, self.max_backoff = workers, retries, backoff, max_backoff
         self.dl = Downloader(dest, respect_robots=respect_robots, user_agent=user_agent,
                              max_bytes=max_bytes, timeout=timeout, robots_fail_open=robots_fail_open,
-                             limiter=RateLimiter(per_host_interval))
+                             limiter=RateLimiter(per_host_interval), allow_private=allow_private)
         self._q, self._lock = _q.Queue(), threading.Lock()
         self.results = []
         self.stats = {"queued": 0, "ok": 0, "failed": 0, "retries": 0, "bytes": 0}
@@ -43,7 +43,7 @@ class MediaQueue:
         return self
 
     def _retryable(self, r):
-        if r.get("ok") or r.get("size_limited") or r.get("error") == "robots.txt disallow":
+        if r.get("ok") or r.get("blocked") or r.get("size_limited") or r.get("error") == "robots.txt disallow":
             return False
         st = r.get("status")
         return st is None or st in RETRY_STATUS

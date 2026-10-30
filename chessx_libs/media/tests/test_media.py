@@ -75,6 +75,7 @@ class Base(unittest.TestCase):
 
     def dl(self, **kw):
         kw.setdefault("min_interval", 0)
+        kw.setdefault("allow_private", True)
         return Downloader(self.tmp, **kw)
 
 
@@ -116,7 +117,7 @@ class TestSizeKill(Base):
     def test_mid_stream_deletes_partial(self):
         r = self.dl(max_bytes=70000).fetch(self.base + "/stream")
         self.assertFalse(r["ok"])
-        self.assertIn("stream exceeded", r["error"])
+        self.assertIn("exceeded max_bytes", r["error"])
         files = [f for _, _, fs in os.walk(self.tmp) for f in fs]
         self.assertEqual(files, [])
 
@@ -145,7 +146,7 @@ class TestRateLimit(Base):
         self.assertGreaterEqual(time.monotonic() - t, 0.38)
 
     def test_queue_per_host(self):
-        q = MediaQueue(self.tmp, workers=3, per_host_interval=0.25, retries=0)
+        q = MediaQueue(self.tmp, allow_private=True, workers=3, per_host_interval=0.25, retries=0)
         q.add(*[self.base + "/img"] * 3)
         t = time.monotonic()
         q.run()
@@ -155,22 +156,33 @@ class TestRateLimit(Base):
 
 class TestQueueRetries(Base):
     def test_429_retry_after(self):
-        q = MediaQueue(self.tmp, workers=1, per_host_interval=0, retries=3, backoff=0.01)
+        q = MediaQueue(self.tmp, allow_private=True, workers=1, per_host_interval=0, retries=3, backoff=0.01)
         res = q.add(self.base + "/flaky").run()
         self.assertTrue(res[0]["ok"], res)
         self.assertEqual(res[0]["attempts"], 3)
         self.assertEqual(q.stats["retries"], 2)
 
     def test_500_exhausts(self):
-        q = MediaQueue(self.tmp, workers=2, per_host_interval=0, retries=2, backoff=0.01)
+        q = MediaQueue(self.tmp, allow_private=True, workers=2, per_host_interval=0, retries=2, backoff=0.01)
         res = q.add(self.base + "/err500", self.base + "/404").run()
         by = {r["url"].rsplit("/", 1)[1]: r for r in res}
         self.assertEqual((by["err500"]["attempts"], by["err500"]["status"]), (3, 500))
         self.assertEqual(by["404"]["attempts"], 1)
         self.assertEqual(q.stats["failed"], 2)
 
+    def test_blocked_not_fetched_nor_retried(self):
+        q = MediaQueue(self.tmp, per_host_interval=0, retries=3)  # default: public destinations only
+        q.add(self.base + "/img.png", "file:///etc/passwd", "http://169.254.169.254/x").run()
+        self.assertEqual(len(q.results), 3)
+        for r in q.results:
+            self.assertTrue(r["blocked"], r)
+            self.assertEqual(r["attempts"], 1)
+            self.assertTrue(r["error"].startswith("blocked: "))
+        self.assertEqual(q.stats["retries"], 0)
+        self.assertEqual(os.listdir(self.tmp), [])
+
     def test_no_retry_on_robots_or_size(self):
-        q = MediaQueue(self.tmp, per_host_interval=0, retries=3, max_bytes=10)
+        q = MediaQueue(self.tmp, allow_private=True, per_host_interval=0, retries=3, max_bytes=10)
         res = q.add(self.base + "/private/x.png", self.base + "/big").run()
         self.assertTrue(all(r["attempts"] == 1 for r in res))
 
