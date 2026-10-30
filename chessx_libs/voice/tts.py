@@ -6,7 +6,7 @@ installed voice for the language (SAPI5/NSSpeechSynthesizer/espeak-ng+mbrola) ->
 
 Config: configure(rate=, volume=, backend=) or env CHESSX_TTS_RATE (wpm, default 165),
 CHESSX_TTS_VOLUME (0..1), CHESSX_TTS_BACKEND (force one), CHESSX_PIPER_MODEL[_EN|_PT|_JA] (.onnx path),
-CHESSX_TTS_OFFLINE=1 (skip edge-tts).
+CHESSX_TTS_OFFLINE=1 (skip edge-tts), CHESSX_TTS_ROBOT=1 (robot mode, see robot.py).
 """
 import glob, os, shutil, subprocess, sys, tempfile
 
@@ -32,6 +32,7 @@ CONFIG = {
     "volume": float(os.environ.get("CHESSX_TTS_VOLUME", "1.0")),
     "backend": os.environ.get("CHESSX_TTS_BACKEND") or None,
     "offline": os.environ.get("CHESSX_TTS_OFFLINE", "") == "1",
+    "robot": os.environ.get("CHESSX_TTS_ROBOT", "") == "1",
 }
 
 
@@ -184,6 +185,8 @@ def _binary_cmd(b, text, lang, wav=None):
         return ["powershell", "-Command", "Add-Type -AssemblyName System.Speech;"
                 "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
                 "$s.Volume=%d;" % int(CONFIG["volume"] * 100) + out + "$s.Speak($args[0])", text]
+    if b.startswith("espeak") and CONFIG["robot"] and not wav:  # live robot without numpy: monotone formant
+        return [b, "-v", LANG_VOICE.get(_code(lang), "en-us") + "+klatt3", "-s", wpm, "-p", "0", "-k", "20", text]
     if b.startswith("espeak"):
         return [b, "-v", _espeak_voice(lang), "-s", wpm, "-p", "45", "-a", str(int(CONFIG["volume"] * 200))] \
             + (["-w", wav] if wav else []) + [text]
@@ -216,12 +219,26 @@ def _render(b, text, path, lang):
     return os.path.isfile(path) and os.path.getsize(path) > 44
 
 
-def save_to_file(text: str, path: str, lang: str = None):
+def robot_mode(on=None):
+    """Get/toggle robot mode."""
+    if on is not None:
+        CONFIG["robot"] = bool(on)
+    return CONFIG["robot"]
+
+
+def save_to_file(text: str, path: str, lang: str = None, robot: bool = None):
+    """Render speech to a WAV file without audio hardware. Returns the backend used, or None.
+
+    robot=None uses CONFIG['robot']; True applies the robot effect (robot.robotize_wav).
+    """
     lang = current_lang(lang)
-    """Render speech to a WAV file without audio hardware. Returns the backend used, or None."""
+    robot = CONFIG["robot"] if robot is None else robot
     for b in available_backends(lang):
         try:
             if b != "noop" and _render(b, text, path, lang):
+                if robot:
+                    from .robot import robotize_wav
+                    robotize_wav(path)
                 return b
         except Exception:
             continue
@@ -251,7 +268,7 @@ def play_wav(path):
         return False
 
 
-def speak(text: str, lang: str = None, dry_run: bool = False):
+def speak(text: str, lang: str = None, dry_run: bool = False, robot: bool = None):
     """Speak text with the most natural voice available. Returns the backend used, or 'noop'. Never raises.
 
     lang: en/pt/ja (aliases ok); None follows voice.set_lang / ChessX i18n.
@@ -263,7 +280,7 @@ def speak(text: str, lang: str = None, dry_run: bool = False):
     wav = tempfile.mktemp(suffix=".wav")
     try:
         if _player():
-            used = save_to_file(text, wav, lang)
+            used = save_to_file(text, wav, lang, robot=robot)
             if used and play_wav(wav):
                 return used
         for b in backends:  # no player: let the engine talk directly
