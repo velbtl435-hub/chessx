@@ -7,6 +7,7 @@ Usage:
   python3 chessx.py --selftest      offline smoke test of every package
   python3 chessx.py agent <cmd>     Agent Factory (create/new/list/run/types/gen-type...; see docs/AGENT_FACTORY.md)
 Math: prof <topic> <args> (PhD professor: math, EE, CS, systems)   math <expr>
+      draw (multi-line ASCII-art equation, empty line ends)   render <expr>
 Flags: --lang en|pt|ja  --no-boot  --mute  --json
 The previous v0.5 single-file version is kept as chessx_v05_legacy.py.
 """
