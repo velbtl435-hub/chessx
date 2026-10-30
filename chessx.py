@@ -176,6 +176,8 @@ def selftest():
                                classify("convert hex to binary").name == "convert" or 1 / 0])
     check("i18n", lambda: i18n.Translator("pt")("welcome") or 1 / 0)
     check("interface", lambda: interface.Board([interface.Cell("a"), interface.Cell("b")]).render())
+    # Fixed test vector only: all-zero key/nonce are a known-answer self-check,
+    # never used for real data (real callers must use random keys and unique nonces).
     check("crypto", lambda: crypto.chacha20_poly1305_decrypt(bytes(32), bytes(12),
           crypto.chacha20_poly1305_encrypt(bytes(32), bytes(12), b"x")) == b"x" or 1 / 0)
     def srch():
@@ -194,7 +196,16 @@ def selftest():
     check("windows", lambda: windows.Layout(60, 10).render())
     check("sounds", lambda: sounds.synth("boot"))
     def det():
-        p = tempfile.mktemp(); open(p, "wb").write(b"%PDF-1.4 /Author (x)"); detective.investigate(p); os.remove(p)
+        fd, p = tempfile.mkstemp(suffix=".pdf")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(b"%PDF-1.4 /Author (x)")
+            detective.investigate(p)
+        finally:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
     check("detective", det)
     check("bases", lambda: bases.convert("ff", 16, 2) == "11111111" or 1 / 0)
     check("scheduler", lambda: scheduler.Scheduler().status())
