@@ -69,7 +69,9 @@ class FingerprintRotator:
     LANGS = ["en-US,en;q=0.9", "pt-BR,pt;q=0.9,en;q=0.8", "ja-JP,ja;q=0.9,en;q=0.8", "en-GB,en;q=0.8"]
 
     def __init__(self, seed=None):
-        self.rng = random.Random(seed)
+        # seed only for reproducible tests; default uses the OS CSPRNG so the
+        # rotation order is not predictable from a guessable seed/state.
+        self.rng = random.Random(seed) if seed is not None else random.SystemRandom()
 
     def headers(self) -> dict:
         return {"User-Agent": self.rng.choice(self.USER_AGENTS), "Accept-Language": self.rng.choice(self.LANGS),
