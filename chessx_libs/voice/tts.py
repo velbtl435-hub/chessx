@@ -27,6 +27,20 @@ NATURAL_NAMES = {
 LANG_TAGS = {"en": ("en", "english"), "pt": ("pt", "portug", "brazil"), "ja": ("ja", "japan", "日本")}
 _BINARIES = ("say", "espeak-ng", "espeak", "spd-say")
 
+
+def _tmpfile(suffix):
+    """Securely create an empty temp file (mkstemp, no TOCTOU race) and return its path."""
+    fd, p = tempfile.mkstemp(suffix=suffix, prefix="chessx_")
+    os.close(fd)
+    return p
+
+
+def _rm(p):
+    try:
+        os.remove(p)
+    except FileNotFoundError:
+        pass
+
 CONFIG = {
     "rate": int(os.environ.get("CHESSX_TTS_RATE", "165")),
     "volume": float(os.environ.get("CHESSX_TTS_VOLUME", "1.0")),
@@ -200,15 +214,14 @@ def _render(b, text, path, lang):
         subprocess.run([_piper_bin(), "--model", piper_model(lang), "--output_file", path],
                        input=text.encode("utf-8"), timeout=120, capture_output=True)
     elif b == "edge-tts":
-        mp3 = tempfile.mktemp(suffix=".mp3")
+        mp3 = _tmpfile(".mp3")
         try:
             pct = "%+d%%" % int((CONFIG["rate"] / 165.0 - 1) * 100)
             subprocess.run([sys.executable, "-m", "edge_tts", "--voice", EDGE_VOICES.get(_code(lang), EDGE_VOICES["en"]),
                             "--rate", pct, "--text", text, "--write-media", mp3], timeout=60, capture_output=True)
             subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", mp3, path], timeout=60, capture_output=True)
         finally:
-            if os.path.exists(mp3):
-                os.remove(mp3)
+            _rm(mp3)
     elif b == "pyttsx3":
         eng = _configured_engine(lang); eng.save_to_file(text, path); eng.runAndWait()
     else:
@@ -277,7 +290,7 @@ def speak(text: str, lang: str = None, dry_run: bool = False, robot: bool = None
     backends = available_backends(lang)
     if dry_run:
         return backends[0]
-    wav = tempfile.mktemp(suffix=".wav")
+    wav = _tmpfile(".wav")
     try:
         if _player():
             used = save_to_file(text, wav, lang, robot=robot)
@@ -294,5 +307,4 @@ def speak(text: str, lang: str = None, dry_run: bool = False, robot: bool = None
                 continue
         return "noop"
     finally:
-        if os.path.exists(wav):
-            os.remove(wav)
+        _rm(wav)

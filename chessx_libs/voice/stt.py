@@ -19,6 +19,20 @@ SAMPLE_RATE = 16000
 _MODELS = {}
 
 
+def _tmpfile(suffix):
+    """Securely create an empty temp file (mkstemp, no TOCTOU race) and return its path."""
+    fd, p = tempfile.mkstemp(suffix=suffix, prefix="chessx_")
+    os.close(fd)
+    return p
+
+
+def _rm(p):
+    try:
+        os.remove(p)
+    except FileNotFoundError:
+        pass
+
+
 class ModelNotFound(RuntimeError):
     """No Vosk model for the requested language."""
 
@@ -82,7 +96,7 @@ def download_model(lang: str = "en", dest: str = None):
     target = os.path.join(dest, name)
     if os.path.isdir(target):
         return target
-    tmp = tempfile.mktemp(suffix=".zip")
+    tmp = _tmpfile(".zip")
     try:
         urllib.request.urlretrieve(MODEL_URL % name, tmp)
         with zipfile.ZipFile(tmp) as z:
@@ -91,8 +105,7 @@ def download_model(lang: str = "en", dest: str = None):
     except Exception:
         return None
     finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
+        _rm(tmp)
 
 
 def _is_16k_mono(path):
@@ -108,11 +121,14 @@ def _to_16k_mono(path):
     """Convert to 16 kHz / mono / 16-bit PCM WAV (ffmpeg, else numpy for plain WAVs). Returns (path, is_temp)."""
     if _is_16k_mono(path):
         return path, False
-    out = tempfile.mktemp(suffix=".wav")
+    out = _tmpfile(".wav")
     if shutil.which("ffmpeg"):
-        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", path, "-ar", str(SAMPLE_RATE), "-ac", "1",
-                        "-sample_fmt", "s16", out], timeout=120, capture_output=True)
-        if os.path.isfile(out):
+        try:
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", path, "-ar", str(SAMPLE_RATE), "-ac", "1",
+                            "-sample_fmt", "s16", out], timeout=120, capture_output=True)
+        except Exception:
+            pass
+        if os.path.getsize(out) > 0:
             return out, True
     try:  # pure numpy fallback (PCM WAV only)
         import numpy as np
@@ -134,6 +150,7 @@ def _to_16k_mono(path):
             w.writeframes(np.clip(a, -32768, 32767).astype("<i2").tobytes())
         return out, True
     except Exception:
+        _rm(out)
         return path, False
 
 
@@ -173,8 +190,8 @@ def transcribe_file(path: str, model_path: str = None, lang: str = None, strict:
                 raise
             return None
         finally:
-            if tmp and os.path.exists(src):
-                os.remove(src)
+            if tmp:
+                _rm(src)
     sr = _sr()
     if sr:
         try:
