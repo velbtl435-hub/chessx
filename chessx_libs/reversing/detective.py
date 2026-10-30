@@ -76,4 +76,12 @@ def investigate(path: str, min_str: int = 5, max_strings: int = 200, use_angr: b
     except Exception as exc:
         report["errors"].append(f"reversal: {exc}")
         report["reversal_summary"] = {"error": str(exc), "narrative_pt": "reversão indisponível", "confidence": 0}
+    # #25 defensive triage — NEW key appended LAST, after reversal_summary (static; never executes)
+    try:
+        from .triage import triage
+        report["triage"] = triage(report, data)
+    except Exception as exc:
+        report["errors"].append(f"triage: {exc}")
+        report["triage"] = {"error": str(exc), "score": 0, "verdict": "clean", "matched": [],
+                            "evidence": [{"kind": "error", "value": f"triagem indisponível: {exc}", "offset": None}]}
     return report

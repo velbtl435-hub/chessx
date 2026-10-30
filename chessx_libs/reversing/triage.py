@@ -472,3 +472,38 @@ def triage_file(path: str, extra_rule_dirs=None) -> dict:
         return r["triage"]
     with open(path, "rb") as fh:
         return triage(r, fh.read(), extra_rule_dirs)
+
+
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(prog="chessx_libs.reversing.triage",
+                                 description="Triagem estática defensiva (não executa amostras; não é antivírus).")
+    ap.add_argument("file", nargs="?")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--rules", action="append", default=[], help="diretório extra de regras")
+    ap.add_argument("--build-allowlist", nargs="+", metavar="DIR", help="imprime 'sha256  path' dos arquivos")
+    ap.add_argument("--list-rules", action="store_true")
+    a = ap.parse_args(argv)
+    if a.build_allowlist:
+        for line in build_allowlist(a.build_allowlist):
+            print(line)
+        return 0
+    if a.list_rules:
+        rules, errors = load_rules(a.rules)
+        for r in rules:
+            print(f"{r['id']:<22} {r['severity']:<8} w={r['weight']:<3} {r['license']}  {r['name']}")
+        for e in errors:
+            print("erro: " + e)
+        return 0
+    if not a.file:
+        ap.error("informe um arquivo")
+    from .detective import investigate
+    rep = investigate(a.file)
+    t = rep["triage"] if not a.rules else triage(rep, open(a.file, "rb").read(), a.rules)
+    print(json.dumps(t, indent=2, ensure_ascii=False, default=str) if a.json
+          else f"{t['verdict']} score={t['score']} rules={[m['id'] for m in t['matched']]}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

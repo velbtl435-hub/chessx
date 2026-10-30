@@ -14,3 +14,5 @@ from .formats import parse_pe_imports, imphash, parse_pe_rich, parse_pe_delay_im
 __all__ = [n for n in dir() if not n.startswith("_")]
 from .reversal import reversal_summary, build_settings, toolchain_recovery, capability_story, cfg_highlights
 __all__ = [n for n in dir() if not n.startswith("_")]
+from .triage import triage_file, load_rules, validate_rule, load_allowlist, RuleError
+__all__ = [n for n in dir() if not n.startswith("_")]

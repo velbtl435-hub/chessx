@@ -58,6 +58,20 @@ def main(argv=None) -> int:
         if cfg.get("function_count"):
             print(f"CFG      : funcs={cfg['function_count']} backend={cfg.get('backend')} entry→{cfg.get('entry_to_main')}")
         print(f"Confiança: {rs.get('confidence')}")
+    tg = r.get("triage") or {}
+    if tg:
+        print("--- Triagem (#25, estática; não é antivírus) ---")
+        print(f"Veredito : {tg.get('verdict')}  score={tg.get('score')}"
+              + ("  [allowlist]" if tg.get("allowlisted") else ""))
+        for m in (tg.get("matched") or [])[:8]:
+            ev = m.get("evidence") or [{}]
+            off = ev[0].get("offset")
+            print(f"  {m['severity']:<8} +{m['weight']:<3} {m['id']}: {str(ev[0].get('value'))[:60]}"
+                  + (f" @0x{off:x}" if isinstance(off, int) else ""))
+        for e in (tg.get("evidence") or [])[:2]:
+            print(f"  · {e.get('value')}")
+        eng = tg.get("engines") or {}
+        print(f"Engines  : chessx={eng.get('chessx_rules_loaded')} yara={eng.get('yara')}({eng.get('yara_rules_loaded')})")
     return 0
 
 

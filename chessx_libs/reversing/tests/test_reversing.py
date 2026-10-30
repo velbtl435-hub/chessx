@@ -323,7 +323,7 @@ def _gcc(tmp_path, src="int main(){char b[64];return b[0];}", flags=None):
 def test_reversal_summary_appended_last_key():
     r = rv.investigate("/bin/ls")
     keys = list(r.keys())
-    assert keys[-1] == "reversal_summary"
+    assert keys[-1] == "triage" and keys[-2] == "reversal_summary"  # #25 triage appended after #24
     assert "provenance" in keys and keys.index("provenance") < keys.index("reversal_summary")
     rs = r["reversal_summary"]
     assert rs["narrative_pt"] and rs["confidence"] >= 0

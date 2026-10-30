@@ -158,3 +158,25 @@ def test_info_low_only_never_likely():
     m = [{"weight": 30, "severity": "low"}, {"weight": 30, "severity": "info"}]
     assert tr.verdict_for(tr.score_matches(m)) == "suspicious"
     assert tr.score_matches([{"weight": 80, "severity": "high"}] * 2) == 100
+
+
+def test_investigate_triage_key_last(suspicious_bin):
+    from chessx_libs.reversing.detective import investigate
+    r = investigate(suspicious_bin)
+    keys = list(r)
+    assert keys[-1] == "triage" and keys[-2] == "reversal_summary"
+    assert r["triage"]["verdict"] == "likely_malicious" and r["triage"]["evidence"]
+    json.dumps(r, default=str)
+
+
+def test_cli_triage_section(suspicious_bin, capsys):
+    from chessx_libs.reversing.__main__ import main
+    assert main([suspicious_bin]) == 0
+    out = capsys.readouterr().out
+    assert "--- Triagem" in out and "likely_malicious" in out and "cx.inj.process" in out
+    assert tr.main(["--list-rules"]) == 0 and "cx.c2.onion" in capsys.readouterr().out
+
+
+def test_public_api_exports():
+    from chessx_libs import reversing as rv
+    assert callable(rv.triage.triage) and callable(rv.triage_file) and callable(rv.investigate) and callable(rv.reversal_summary)
