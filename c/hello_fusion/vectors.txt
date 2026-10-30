@@ -1,0 +1,16 @@
+# shared parity vectors: <cmd> <args...>  (run on native CLI, wasm CLI, ctypes .so, pure Python)
+crc 
+crc a
+crc 123456789
+crc The quick brown fox jumps over the lazy dog
+crc ChessX
+crchex 00
+crchex ffffffff
+crchex 00010203040506070809fefdfcfb
+fuse 1:10 2:5 1:3 3:7
+fuse 5:1 4:1 3:1 2:1 1:1
+fuse 9:-4 9:4 8:0
+fuse 42:9223372036854775000 7:-9223372036854775000
+fuse
+fuse 2:100 1:100 2:-50 3:50 1:1
+fuse 1:9223372036854775807 1:1 2:0
