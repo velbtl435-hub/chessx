@@ -1,10 +1,38 @@
-import hashlib, os, re, stat, struct, time, urllib.parse, zipfile
-from ..reversing.detector import detect
-from ..reversing.origin import origin_hints
-from ..reversing.strings import indicators
+"""Detective: reverse search of file origins, metadata and provenance chain.
+
+Hashes, format metadata (PDF/PNG/ZIP-OOXML/JPEG EXIF), xattrs and embedded-payload
+carving are delegated to ``chessx_libs.reversing.provenance`` (single implementation).
+If that import fails, a minimal stdlib fallback keeps the public API working
+(hashes + filesystem metadata; format parsers return nothing). Static analysis only.
+"""
+import hashlib, importlib, os, stat, time, urllib.parse, zipfile
+
+try:
+    # module (not the same-named function re-exported by chessx_libs.reversing)
+    _pv = importlib.import_module("..reversing.provenance", __package__)
+    from ..reversing.detector import detect
+    from ..reversing.origin import origin_hints
+    from ..reversing.strings import indicators
+    HAVE_REVERSING = True
+except Exception:  # reversing missing/broken: degrade gracefully
+    _pv = None
+    HAVE_REVERSING = False
+
+    def detect(data):
+        return {"type": "unknown", "size": len(data)}
+
+    def origin_hints(data):
+        return []
+
+    def indicators(data):
+        return {"urls": [], "emails": [], "ips": []}
 
 
 def hashes(data: bytes) -> dict:
+    """md5/sha1/sha256 hex digests (same keys as before)."""
+    if _pv is not None:
+        h = _pv.hashes(data)
+        return {a: h[a] for a in ("md5", "sha1", "sha256")}
     return {a: hashlib.new(a, data).hexdigest() for a in ("md5", "sha1", "sha256")}
 
 
@@ -13,47 +41,38 @@ def _ts(t):
 
 
 def _png_text(data):
-    out, i = {}, 8
-    while i + 8 <= len(data):
-        ln, typ = struct.unpack(">I4s", data[i:i + 8])
-        if typ == b"tEXt":
-            k, _, v = data[i + 8:i + 8 + ln].partition(b"\0")
-            out[k.decode("latin-1")] = v.decode("latin-1")
-        if typ == b"IEND":
-            break
-        i += 12 + ln
-    return out
+    return _pv.png_text(data, limit=None) if _pv else {}
 
 
 def _pdf_info(data):
-    keys = ("Title", "Author", "Creator", "Producer", "CreationDate", "ModDate")
-    out = {}
-    for k in keys:
-        m = re.search(rb"/" + k.encode() + rb"\s*\(([^)]*)\)", data)
-        if m:
-            out[k] = m.group(1).decode("latin-1")
-    return out
+    return _pv.pdf_info(data, limit=None) if _pv else {}
 
 
 def _zip_info(path):
     with zipfile.ZipFile(path) as z:
         infos = z.infolist()
         meta = {"entries": len(infos), "first_files": [i.filename for i in infos[:10]]}
-        if "docProps/core.xml" in z.namelist():
-            core = z.read("docProps/core.xml").decode("utf-8", "replace")
-            for tag in ("creator", "lastModifiedBy", "created", "modified"):
-                m = re.search(r"<[^>]*" + tag + r"[^>]*>([^<]*)<", core)
-                if m:
-                    meta[tag] = m.group(1)
+        if _pv:
+            meta.update(_pv.office_core_props(z))
         return meta
 
 
 def _jpeg_exif_tags(data):
-    i = data.find(b"Exif\0\0")
-    if i < 0:
-        return {}
-    found = re.findall(rb"[\x20-\x7e]{4,40}", data[i:i + 4096])
-    return {"exif_strings": [s.decode() for s in found[:12]]}
+    found = _pv.jpeg_exif_strings(data) if _pv else []
+    return {"exif_strings": found} if found else {}
+
+
+def _xattrs(path):
+    if _pv:
+        return _pv.read_xattrs(path, limit=None)
+    out = {}
+    if hasattr(os, "listxattr"):
+        try:
+            for a in os.listxattr(path):
+                out[a] = os.getxattr(path, a).decode("utf-8", "replace")
+        except OSError:
+            pass
+    return out
 
 
 def metadata(path: str) -> dict:
@@ -74,14 +93,7 @@ def metadata(path: str) -> dict:
             meta.update(_jpeg_exif_tags(data))
     except Exception as e:
         meta["parse_error"] = str(e)
-    xattrs = {}
-    if hasattr(os, "listxattr"):
-        try:
-            for a in os.listxattr(path):  # e.g. user.xdg.origin.url set by browsers
-                xattrs[a] = os.getxattr(path, a).decode("utf-8", "replace")
-        except OSError:
-            pass
-    meta["xattrs"] = xattrs
+    meta["xattrs"] = _xattrs(path)
     zone = path + ":Zone.Identifier"  # Windows download origin (NTFS ADS)
     if os.name == "nt" and os.path.exists(zone):
         meta["zone_identifier"] = open(zone, encoding="utf-8", errors="replace").read()
@@ -115,6 +127,14 @@ def provenance_chain(meta: dict, iocs: dict, hints: list) -> list:
     return chain
 
 
+def embedded_payloads(data: bytes) -> list:
+    """Payloads carved after offset 0 (zip/pdf/png/gzip/7z/pe/elf/pem); [] without reversing."""
+    try:
+        return _pv.embedded_resources(data) if _pv else []
+    except Exception:
+        return []
+
+
 def investigate(path: str) -> dict:
     with open(path, "rb") as fh:
         data = fh.read()
@@ -124,4 +144,5 @@ def investigate(path: str) -> dict:
     hints = origin_hints(data)
     return {"metadata": meta, "hashes": h, "indicators": iocs, "origin_hints": hints,
             "provenance": provenance_chain(meta, iocs, hints),
-            "reverse_search": reverse_search_links(h, os.path.basename(path))}
+            "reverse_search": reverse_search_links(h, os.path.basename(path)),
+            "embedded_payloads": embedded_payloads(data)}  # additive key, kept last
