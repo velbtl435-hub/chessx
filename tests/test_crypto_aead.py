@@ -46,3 +46,25 @@ class TestAEAD(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAsymBackend(unittest.TestCase):
+    def test_matches_pure(self):
+        S = importlib.import_module("chessx_libs.crypto.asym")
+        px = importlib.import_module("chessx_libs.crypto.x25519")
+        pe = importlib.import_module("chessx_libs.crypto.ed25519")
+        a, A_ = S.x25519_keypair(); b, B_ = S.x25519_keypair()
+        self.assertEqual(A_, px.x25519(a, px.BASE))
+        self.assertEqual(S.x25519_shared(a, B_), px.x25519_shared(b, A_))
+        sk, pk = S.ed25519_keypair()
+        self.assertEqual(pk, pe.public_key(sk))
+        sig = S.ed25519_sign(sk, b"m")
+        self.assertEqual(sig, pe.ed25519_sign(sk, b"m"))
+        self.assertTrue(S.ed25519_verify(pk, b"m", sig))
+        self.assertFalse(S.ed25519_verify(pk, b"n", sig))
+        self.assertFalse(S.ed25519_verify(pk, b"m", sig[:63]))
+        with self.assertRaises(ValueError):
+            S.x25519_shared(a, bytes(32))
+        with mock.patch.object(S, "HAVE_CRYPTOGRAPHY", False):
+            self.assertTrue(S.ed25519_verify(pk, b"m", S.ed25519_sign(sk, b"m")))
+            self.assertEqual(S.x25519_shared(a, B_), px.x25519_shared(a, B_))

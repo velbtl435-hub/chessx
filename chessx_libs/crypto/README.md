@@ -22,6 +22,7 @@ Use these for stored passwords; use `kdf.argon2id` only to derive raw keys (e.g.
 
 ## Backend + high-level AEAD (aead.py)
 `CRYPTO_BACKEND` = "cryptography" (used automatically when installed) or "pure". The exported
+`x25519_keypair`/`x25519_shared`/`ed25519_*` (asym.py) and
 `chacha20_poly1305_*` / `aes_gcm_*` names dispatch to it (same outputs). Prefer the high-level API:
 `seal(key, pt, aad=b"", alg="chacha20-poly1305"|"aes-256-gcm")` -> `CX|ver|alg|nonce12|ct|tag16` (random nonce,
 header authenticated), `open_sealed(key, blob, aad)` raises `DecryptError`. Rotate a key before ~2^32 messages.
