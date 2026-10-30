@@ -67,4 +67,13 @@ def investigate(path: str, min_str: int = 5, max_strings: int = 200, use_angr: b
             report["provenance"] = provenance(path, funcs)
         except Exception as exc:
             report["errors"].append(f"provenance: {exc}")
+    # #24 program reversal — NEW key appended LAST (menu entry 9 / key order untouched above)
+    try:
+        from .reversal import reversal_summary
+        report["reversal_summary"] = reversal_summary(
+            path, data=data, hdr=report.get("headers") or {},
+            provenance=report.get("provenance"), disasm=report.get("disasm"), cfg=report.get("cfg"))
+    except Exception as exc:
+        report["errors"].append(f"reversal: {exc}")
+        report["reversal_summary"] = {"error": str(exc), "narrative_pt": "reversão indisponível", "confidence": 0}
     return report

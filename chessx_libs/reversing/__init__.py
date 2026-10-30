@@ -12,3 +12,5 @@ __all__ = [n for n in dir() if not n.startswith("_")]
 from .provenance import provenance, hashes, fingerprint, section_entropy, embedded_resources, pe_version_info
 from .formats import parse_pe_imports, imphash
 __all__ = [n for n in dir() if not n.startswith("_")]
+from .reversal import reversal_summary, build_settings, toolchain_recovery, capability_story, cfg_highlights
+__all__ = [n for n in dir() if not n.startswith("_")]

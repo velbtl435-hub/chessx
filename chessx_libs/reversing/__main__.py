@@ -40,6 +40,24 @@ def main(argv=None) -> int:
         if pv["embedded"]:
             print(f"Embutidos: {[(hex(e['offset']), e['type']) for e in pv['embedded'][:5]]}")
     print(f"Strings : {r['strings']['count']}  URLs={len(r['indicators']['urls'])}")
+    rs = r.get("reversal_summary") or {}
+    if rs and not rs.get("error"):
+        print("--- Reversão (#24) ---")
+        print(rs.get("narrative_pt") or "-")
+        tc = rs.get("toolchain") or {}
+        print(f"Toolchain: lang={tc.get('language')} comp={tc.get('compiler')} "
+              f"link={tc.get('linker')} rt={tc.get('runtime')} conf={tc.get('confidence')}")
+        bs = rs.get("build_settings") or {}
+        print(f"Build    : PIE={bs.get('pie')} NX={bs.get('nx')} RELRO={bs.get('relro')} "
+              f"canary={bs.get('stack_canary')} fortify={bs.get('fortify')} "
+              f"stripped={bs.get('stripped')} static={bs.get('static')}")
+        caps = rs.get("capabilities") or {}
+        if caps.get("capabilities"):
+            print("Caps     : " + ", ".join(f"{k}:{len(v)}" for k, v in caps["capabilities"].items()))
+        cfg = rs.get("cfg") or {}
+        if cfg.get("function_count"):
+            print(f"CFG      : funcs={cfg['function_count']} backend={cfg.get('backend')} entry→{cfg.get('entry_to_main')}")
+        print(f"Confiança: {rs.get('confidence')}")
     return 0
 
 
