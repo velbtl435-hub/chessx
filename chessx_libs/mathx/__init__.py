@@ -6,8 +6,9 @@ from .ascii2d import interpret, render
 
 COMMANDS = {"prof": "professor", "professor": "professor", "math": "math",
             "draw": "draw", "render": "render", "pretty": "render",
-            "steps": "steps", "check": "check"}
-MULTILINE = {"draw", "check"}          # commands that read a multi-line block from the terminal
+            "steps": "steps", "check": "check",
+            "export": "export", "translate": "translate", "calc": "calc"}
+MULTILINE = {"draw", "check", "calc"}          # commands that read a multi-line block from the terminal
 
 
 def _head(text):
@@ -115,7 +116,42 @@ def _check(rest, lang, read_block):
     return "\n".join(report)
 
 
+def _export(rest, lang, _rb):
+    """export <python|numpy|sympy|matlab|octave|julia|r|latex|wolfram|c|all> <expr | solve <equation>>"""
+    import sympy as sp
+    from .langs import export, export_all
+    target, _, expr = rest.partition(" ")
+    if not expr.strip():
+        return "export <python|numpy|sympy|matlab|octave|julia|r|latex|wolfram|c|all> <expr>"
+    obj = None if expr.strip().startswith("solve ") else parse(expr)
+    if obj is None or isinstance(obj, sp.Eq):
+        e = parse(expr.strip()[6:] if expr.strip().startswith("solve ") else expr)
+        e = e if isinstance(e, sp.Eq) else sp.Eq(e, 0)
+        x = sorted(e.free_symbols, key=str)[0]
+        obj = sp.solve(e, x)
+    return export_all(obj) if target.lower() == "all" else export(obj, target)
+
+
+def _translate(rest, lang, _rb):
+    """translate <from> <to> <code>   e.g. translate wolfram python Sin[x]^2"""
+    from .langs import translate
+    parts = rest.split(None, 2)
+    if len(parts) < 3:
+        return "translate <from> <to> <expr>  (python numpy matlab octave julia r latex wolfram c)"
+    return translate(parts[2], parts[0], parts[1])
+
+
+def _calc(rest, lang, read_block):
+    """calc a = 3; b = a^2 + 1; sqrt(b)   (or 'calc' alone for a multi-line snippet)"""
+    from .langs import safe_eval
+    text = rest
+    if not text.strip() and read_block:
+        print("calc: one statement per line, empty line to finish")
+        text = "\n".join(read_block())
+    return "\n".join(safe_eval(text))
+
+
 _HANDLERS = {"professor": _professor, "math": _math, "draw": _draw, "render": _render,
-             "steps": _steps, "check": _check}
+             "steps": _steps, "check": _check, "export": _export, "translate": _translate, "calc": _calc}
 __all__ = ["parse", "preprocess", "MathError", "Professor", "PHD_SYSTEM_PROMPT", "set_llm", "dispatch",
            "is_math_command", "COMMANDS", "interpret", "render"]

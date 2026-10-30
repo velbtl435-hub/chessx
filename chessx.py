@@ -9,6 +9,7 @@ Usage:
 Math: prof <topic> <args> (PhD professor: math, EE, CS, systems)   math <expr>
       draw (multi-line ASCII-art equation, empty line ends)   render <expr>
       steps solve|system|diff|integrate|simplify|limit|matrix <input>   check (multi-line working)
+      export <lang|all> <expr>   translate <from> <to> <expr>   calc <snippet> (sandboxed)
 Flags: --lang en|pt|ja  --no-boot  --mute  --json
 The previous v0.5 single-file version is kept as chessx_v05_legacy.py.
 """
