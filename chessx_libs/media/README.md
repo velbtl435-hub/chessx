@@ -38,6 +38,9 @@ ng.is_public_ip("10.0.0.1")      # False
     `max_seconds` deadline passed.
   * Otherwise `urllib.error.HTTPError` for 4xx/5xx and too many redirects, and `URLError` or `OSError` for network
     errors.
+* **Size ceiling:** `DEFAULT_MAX_BYTES` (512 MB) is a ceiling sized for bulk media downloads, not a sensible
+  limit for everything. Every caller should pass its own tighter `max_bytes`/`max_seconds` (for example, browser
+  pages and API responses need a few MB and a short deadline). `max_bytes=None` disables the cap explicitly.
 * **Testing:** `allow_private=True` is an explicit opt-in for local servers in tests; the scheme and userinfo rules
   still apply. `resolver(host, port) -> [ip, ...]` replaces DNS.
 
@@ -47,7 +50,19 @@ from chessx_libs.media import Downloader, MediaQueue
 d = Downloader("downloads", min_interval=1.0, max_bytes=50_000_000, robots_fail_open=False)
 r = d.fetch("https://example.org/media/clip")  # dict: ok, path, bytes, mime, kind, detected_by, status, error
 ```
-- **Type detection** (`detect.py`): `Content-Type` header → magic bytes of the first chunk → URL extension. File saved under `dest/<image|audio|video|other>/` with an extension matching the detected type; names never collide (`name-1.png`, ...).
+- **Netguard:** every fetch (including robots.txt) goes through `netguard`. Private, loopback, link-local and other
+  non-public destinations are refused unless `allow_private=True` (opt-in, meant for local test servers).
+  A refused URL returns `{"ok": False, "blocked": True, "error": "blocked: <reason>", "status": None}` without
+  touching the network (robots.txt is not fetched either); a redirect hop that gets refused is reported the same way.
+- **Bounded defaults:** `max_bytes=512 MB` (`DEFAULT_MAX_BYTES`) and `max_seconds=600` (`DEFAULT_MAX_SECONDS`, whole
+  download deadline) in both `Downloader` and `MediaQueue`. Pass `None` to disable either explicitly.
+- **Safe filenames:** `safe_stem()` keeps only `[A-Za-z0-9._-]`, strips leading dots, caps names at 100 characters
+  and prefixes Windows reserved names (`CON`, `NUL`, `COM1`...) with `_`. `reserve_path(dir, stem, ext)` creates the
+  file atomically (`O_EXCL`, `-1`, `-2`... on collision), returns `(path, fd)` and refuses paths that escape `dir`.
+  `unique_path()` remains as a compat wrapper (it now creates the empty file).
+- **Extensions:** taken from the detected type only, never from the URL. Unknown types and script/executable-like
+  types (`.exe`, `.sh`, `.js`, `.html`, `.svg`, ...) are saved as `.bin`.
+- **Type detection** (`detect.py`): `Content-Type` header → magic bytes of the first chunk → URL extension. File saved under `dest/<image|audio|video|other>/` with an extension matching the detected type (see Extensions); names never collide (`name-1.png`, ...).
 - **Size kill:** `max_bytes` aborts before reading if `Content-Length` is larger, and aborts mid-stream (partial file deleted) otherwise. Result has `size_limited: True` and a clear `error`.
 - **robots.txt:** respected by default, `Crawl-delay` honored. `robots_fail_open` decides what happens when robots.txt can't be fetched: `False` (default) = disallow, `True` = allow. 404 = allow all, 401/403 = disallow all.
 
@@ -56,7 +71,7 @@ r = d.fetch("https://example.org/media/clip")  # dict: ok, path, bytes, mime, ki
 q = MediaQueue("downloads", workers=4, per_host_interval=1.0, retries=3, backoff=0.5, max_bytes=10**8)
 q.add(url1, url2); results = q.run(); print(q.stats)  # queued/ok/failed/retries/bytes
 ```
-Retries on 429/5xx/network errors with exponential backoff (capped by `max_backoff`); `Retry-After` (seconds or HTTP date) overrides. No retry for robots disallow, size kill, or other 4xx. Each result has `attempts`.
+Retries on 429/5xx/network errors with exponential backoff (capped by `max_backoff`); `Retry-After` (seconds or HTTP date) overrides. No retry for robots disallow, size kill, netguard-blocked URLs (`blocked: True`), or other 4xx. Each result has `attempts`.
 
 ## Generation (`chessx_libs.media.gen`)
 - `gen.audio`: `tone`, `sequence`, `write_wav`, `chess_sound(name, path)` — names: move, capture, check, castle, promote, illegal, game_end (16-bit mono WAV).
