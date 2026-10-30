@@ -19,3 +19,9 @@ Optional deps:
 `hash_password(pw)` -> PHC `$argon2id$v=19$m=65536,t=3,p=4$salt$hash` (random 16-byte salt, RFC 9106/OWASP params),
 `verify_password(phc, pw)` (constant-time, False on malformed), `check_needs_rehash(phc)`.
 Use these for stored passwords; use `kdf.argon2id` only to derive raw keys (e.g. keystore wrapping).
+
+## Backend + high-level AEAD (aead.py)
+`CRYPTO_BACKEND` = "cryptography" (used automatically when installed) or "pure". The exported
+`chacha20_poly1305_*` / `aes_gcm_*` names dispatch to it (same outputs). Prefer the high-level API:
+`seal(key, pt, aad=b"", alg="chacha20-poly1305"|"aes-256-gcm")` -> `CX|ver|alg|nonce12|ct|tag16` (random nonce,
+header authenticated), `open_sealed(key, blob, aad)` raises `DecryptError`. Rotate a key before ~2^32 messages.
