@@ -70,7 +70,8 @@ export async function multiSearch(q: string, limit = 10, names?: EngineName[]) {
   const use = names || (["duckduckgo", "brave", "searxng"] as EngineName[]);
   const errors: Record<string, string> = {};
   const lists = await Promise.all(use.map(n => ENGINES[n](q, limit).catch((e: Error) => { errors[n] = e.message; return [] as Result[]; })));
-  let results = fuse(lists);
+  const isHttp = (u: string) => { try { return /^https?:$/.test(new URL(u).protocol); } catch { return false; } };
+  let results = fuse(lists.map(l => l.filter(r => isHttp(r.url))));
   if (!results.length && !names) results = fuse([await mock(q, limit)]), (errors.fallback = "all engines failed, showing mock");
   return { query: q, results: results.slice(0, limit), errors, at: new Date().toISOString() };
 }

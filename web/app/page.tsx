@@ -3,6 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type R = { title: string; url: string; snippet: string; score: number; engines: string[] };
 const PALETTE = ["var(--teal)", "var(--purple)", "var(--blue)", "var(--orange)"];
+function safeOpen(raw: string) {
+  let u: URL;
+  try { u = new URL(raw); } catch { return; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return;
+  const w = window.open(u.href, "_blank", "noopener,noreferrer");
+  if (w) w.opener = null;
+}
 const PER_PAGE = 12;
 const LOGO = String.raw`   _____ _                   __   __
   / ____| |                  \ \ / /     .::.
@@ -63,7 +70,7 @@ export default function Page() {
       if (k === "/" || k === "i") { e.preventDefault(); input.current?.focus(); return; }
       if (k === "Tab" || k === "ArrowRight" || k === "l") { e.preventDefault(); if (n) setSel(s => (e.shiftKey ? (s - 1 + n) % n : (s + 1) % n)); }
       else if (k === "ArrowLeft" || k === "h") { if (n) setSel(s => (s - 1 + n) % n); }
-      else if (k === "Enter") { if (cur) window.open(cur.url, "_blank", "noopener"); }
+      else if (k === "Enter") { if (cur) safeOpen(cur.url); }
       else if (k === "d") setDetail(v => !v);
       else if (k === "n") { setPage(p => Math.min(p + 1, pages - 1)); setSel(0); }
       else if (k === "p") { setPage(p => Math.max(p - 1, 0)); setSel(0); }
@@ -92,7 +99,7 @@ export default function Page() {
         {view.map((r, i) => (
           <div key={r.url + i} className={"cell" + (i === sel ? " sel" : "")}
             style={{ ["--c" as string]: PALETTE[(i + Math.floor(i / 4)) % 4] }}
-            onClick={() => setSel(i)} onDoubleClick={() => window.open(r.url, "_blank", "noopener")}>
+            onClick={() => setSel(i)} onDoubleClick={() => safeOpen(r.url)}>
             <span className="n">[{String(page * PER_PAGE + i + 1).padStart(2, "0")}] {"█".repeat(Math.max(1, Math.round(Math.min(r.score, 2) * 4)))}</span>
             <span className="t">{r.title.slice(0, 80) || r.url}</span>
             <span className="m">{r.engines.join(",")} {r.score.toFixed(2)}</span>
