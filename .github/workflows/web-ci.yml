@@ -1,0 +1,40 @@
+name: web-ci
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/web-ci.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/web-ci.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if no Vercel token (Git integration handles deploys)
+        if: env.VERCEL_TOKEN == ''
+        run: echo "VERCEL_TOKEN secret not set - skipping CLI deploy."
+      - name: Deploy to Vercel (prod)
+        if: env.VERCEL_TOKEN != ''
+        working-directory: web
+        run: |
+          npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx vercel@latest build --prod --token="$VERCEL_TOKEN"
+          npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
