@@ -156,3 +156,40 @@ Times: **Time 1** = search, reversing, crypto, bases, media, sounds, interface, 
 | CRY-05 | BAIXO | chessx_libs/crypto/keystore.py:100-107 | Gravação atômica (`mkstemp` 0600 + `os.replace`), mas sem lock entre processos (backlog conhecido). | Duas rotações simultâneas: a última vence e uma chave nova se perde. | `fcntl`/`msvcrt` lock em volta de ler-modificar-gravar. | Time 1 (crypto) |
 | CRY-06 | INFO | crypto/passwords.py:3; crypto/otp.py:41-58, :142-165; crypto/aead.py:6 | Conferido como correto: Argon2id m=64 MiB, t=3, p=4, salt de 16 B (OWASP); TOTP janela ±1 com `compare_digest` e anti-replay por `last_step`; backup codes com PBKDF2-SHA256 100k, salt por código e uso único; AEAD com nonce aleatório de 12 B gerado automaticamente e blob versionado. | — | — | Time 1 (crypto) |
 | CRY-07 | INFO | docs/CRYPTO_AUDIT.md | Cruzamento: os 9 achados da auditoria anterior estão corrigidos no código (ver DOC-01). Backlog ainda aberto: lock entre processos (CRY-04/05), Double Ratchet e teste real de QR/keyring. | — | — | Time 1 (crypto) |
+
+## Reauditoria: triagem #25 fases C e D (ab2aa73, 5ec3b0c, a690606)
+
+- **Data:** 2026-10-30 12:30 (UTC-3). Escopo: só os diffs desses 3 commits em `chessx_libs/reversing/{triage,detective,__main__,__init__}.py` e `tests/test_triage.py`, revisados no `main` de hoje.
+- **Ambiente:** venv com yara-python 4.5.4 para testar o caminho real do YARA.
+- **Testes:** `pytest chessx_libs/reversing`: 67 passed, 4 skipped. `test_triage.py` com yara real: 25 passed, 0 skipped.
+- **Testes manuais com regras sintéticas:**
+  - `include` foi recusado ("includes are disabled").
+  - O symlink para fora da pasta de regras foi ignorado (`_safe_files` usa realpath com o diretório pai igual à base).
+  - `import "console"` foi aceito e imprimiu no stdout.
+  - Com `CHESSX_TRIAGE_YARA_MAX=abc`, o pacote inteiro dá `ValueError` ao importar.
+
+| Severidade | CRÍTICO | ALTO | MÉDIO | BAIXO | INFO | Total |
+|---|---|---|---|---|---|---|
+| Triagem C/D | 0 | 0 | 2 | 5 | 3 | 10 |
+
+| ID | Sev. | Arquivo:linha | Descrição | Risco | Correção sugerida | Time |
+|---|---|---|---|---|---|---|
+| TRI-01 | MÉDIO | reversing/triage.py (yara_scan, laço `rules.match`) | O timeout de 5 s vale por arquivo `.yar`, sem orçamento total. Com até 500 arquivos (`YARA_MAX_FILES`), um único `investigate()` pode levar cerca de 2500 s. | DoS por pacote de regras lento; trava a CLI e a UI. | Orçamento total (ex.: 15 s) por triagem, interrompendo o laço quando passar do prazo; ou compilar tudo num único `yara.compile(filepaths=…)` com um só `match`. | Time 1 |
+| TRI-02 | MÉDIO | reversing/detective.py:79-86 | Se `triage()` levanta exceção, o fallback devolve `verdict: "clean"`. | Falha aberta: um erro (ou uma entrada feita para quebrar a triagem) aparece como "limpo". | Usar um veredito próprio (`"error"`/`"unknown"`) e mostrar isso na CLI/UI. | Time 1 |
+| TRI-03 | BAIXO | reversing/triage.py:396 | `int(os.environ["CHESSX_TRIAGE_YARA_MAX"])` roda no import do módulo. Um valor inválido derruba `import chessx_libs.reversing` inteiro, inclusive o selftest. | Um env inválido quebra o pacote todo. | Ler o valor de forma tolerante (try/except, mínimo 1) e de preferência na hora do scan. | Time 1 |
+| TRI-04 | BAIXO | reversing/triage.py (yara_scan, `yara.compile`) | Módulos YARA não são restritos: `import "console"` escreve direto no stdout (confirmado), e `magic`/`cuckoo` também são aceitos. | Regras de terceiros injetam texto na saída e corrompem o `--json`. | Rejeitar `import` fora de uma allowlist (pe, elf, math, hash) antes de compilar, ou usar `console_callback`. | Time 1 |
+| TRI-05 | BAIXO | reversing/triage.py:140-145 | As pastas de `CHESSX_TRIAGE_RULES` e `--rules` são carregadas sem checar dono nem permissão (ex.: uma pasta em `/tmp` gravável por todos). | Outro usuário local pode plantar regras e mudar vereditos (forçar "clean" pela allowlist ou gerar falsos positivos). | Recusar pastas/arquivos graváveis por grupo/outros ou de outro dono; registrar a origem no relatório. | Time 1 |
+| TRI-06 | BAIXO | reversing/triage.py (main, `open(a.file,"rb").read()`) | Com `--rules`, o arquivo é lido inteiro de novo, sem limite de tamanho e sem fechar o handle, e a triagem roda duas vezes (uma dentro de `investigate`, outra fora). | Memória/tempo dobrados em amostras grandes; ResourceWarning. | Passar `extra_rule_dirs` para `investigate()` ou reaproveitar os dados dele; usar `with open`. | Time 1 |
+| TRI-07 | BAIXO | tests/test_triage.py:347-357 | O teste de timeout depende de relógio real (regex patológica, 1 s), e os testes de yara real dependem de `importorskip`. O CI não instala `yara-python`, então lá eles são sempre pulados. | Regressão no caminho real não é pega no CI; o teste de timeout pode oscilar em máquina lenta ou rápida. | Instalar `requirements-optional.txt` num job do CI; testar a detecção de timeout com um `match` simulado que levanta `yara.TimeoutError`. | Time 1 / CI |
+| TRI-08 | INFO | reversing/triage.py (yara_scan) | Os arquivos `.yar` são recompilados a cada `investigate()`. | Custo repetido em lote (corpus FP, varredura de pastas). | Cache por (caminho, mtime, tamanho). | Time 1 |
+| TRI-09 | INFO | reversing/triage.py:469-471 | A detecção de timeout ainda aceita a substring "timeout" em qualquer mensagem de erro, além de `yara.TimeoutError`. | Um erro qualquer cuja mensagem contenha "timeout" marca `timed_out=True`. | Depois do fix do a690606, confiar só em `isinstance(exc, yara.TimeoutError)`. | Time 1 |
+| TRI-10 | INFO | reversing/README.md:90-92 | A doc fala em "timeout 5 s", mas não diz que é por arquivo nem cita o limite de 500 arquivos, `CHESSX_TRIAGE_YARA_MAX` ou o corte silencioso acima de 32 MiB (`limits.truncated`). | Expectativa errada de tempo e cobertura do scan. | Documentar os três limites e o comportamento de truncamento. | Time 1 |
+
+Pontos verificados sem achado:
+- `includes=False` funciona.
+- Não há path traversal nem escape por symlink nas pastas de regras.
+- O limite de 32 MiB é aplicado (com teste).
+- A chave `triage` vem por último no relatório.
+- A CLI limita a saída a 8 matches.
+- A atribuição DRL (author/license) é preservada.
+- Nada é executado nem baixado da rede.
