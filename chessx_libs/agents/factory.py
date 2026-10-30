@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from .core import Agent, Limits
 from .types import Registry, slug
+from .workspace import Workspace
 
 
 def home() -> str:
@@ -24,6 +25,7 @@ class AgentDefinition:
     links: List[str] = field(default_factory=list)
     limits: Dict = field(default_factory=dict)             # Limits fields
     timeout: float = 60.0
+    workspace: Dict = field(default_factory=lambda: {"mode": "nested", "cleanup": "keep"})
     env: Dict[str, str] = field(default_factory=dict)
     created: float = field(default_factory=time.time)
 
@@ -107,27 +109,53 @@ class Factory:
             return self.create(overwrite=True, **json.load(fh))
 
     # ---- build / run --------------------------------------------------
+    def workspace_for(self, d: AgentDefinition, parent_ws: Workspace = None) -> Workspace:
+        w = d.workspace or {}
+        if parent_ws is not None:
+            return parent_ws.child(d.name, w.get("mode"), w.get("cleanup"))
+        return Workspace(os.path.join(self.root, "workspaces"), d.name, mode=w.get("mode", "nested"),
+                         cleanup=w.get("cleanup", "keep"), ttl=w.get("ttl", 86400))
+
     def build(self, name_or_def, parent: Agent = None, workdir: str = None) -> Agent:
         """Turn a definition into a live Agent tree (sub-prompts -> sub-agents)."""
         d = name_or_def if isinstance(name_or_def, AgentDefinition) else self.load(name_or_def)
         t = self.registry.resolve(d.type)
         meta = {"definition": d.to_dict(), "capabilities": t["capabilities"],
                 "prompt": "\n".join(x for x in (t.get("prompt", ""), d.prompt) if x), "links": d.links}
-        factory = self
+        ws = None if workdir else self.workspace_for(d, parent.meta.get("workspace") if parent else None)
+        if ws:
+            for m in d.materials:
+                if not os.path.exists(os.path.join(ws.path, "materials", os.path.basename(m))):
+                    ws.add_material(m)
+            ws.save_state(definition=d.name, links=d.links)
+        meta["workspace"] = ws
 
         def task(agent):
-            wd = agent.meta.get("workdir") or workdir or os.getcwd()
-            res = {"prompt": agent.meta["prompt"], "links": d.links, "payload": run_payload(d, wd)}
-            res["sub"] = [c.run() for c in agent.children]
-            return res
+            wd = workdir or os.path.join(ws.path, "files")
+            ok = False
+            try:
+                res = {"prompt": agent.meta["prompt"], "links": d.links, "workspace": ws.path if ws else wd,
+                       "payload": run_payload(d, wd, ws.env() if ws else None)}
+                res["sub"] = [c.run() for c in agent.children]
+                ok = all(p["rc"] == 0 for p in res["payload"].values())
+                if ws:
+                    ws.log("run ok=%s" % ok); ws.save_state(last_result=res)
+                return res
+            finally:
+                if ws:
+                    ws.finish(ok)
 
         if parent is None:
             a = Agent(d.name, t.get("role", d.type), task, d.type, limits=Limits(**d.limits), meta=meta)
         else:
             a = parent.spawn(d.name, t.get("role", d.type), task, d.type, **meta)
         for i, sp in enumerate(d.sub_prompts):
-            a.spawn("%s_sub%d" % (d.name, i + 1), task=lambda ag: {"prompt": ag.meta["prompt"]}, kind=d.type + "_sub",
-                    prompt=sp, parent_prompt=meta["prompt"])
+            sub = "%s_sub%d" % (d.name, i + 1)
+            sws = ws.child(sub) if ws else None
+            if sws:
+                sws.write("prompt.txt", sp)
+            a.spawn(sub, task=lambda ag: {"prompt": ag.meta["prompt"], "workspace": ag.meta["workspace"].path if ag.meta["workspace"] else None},
+                    kind=d.type + "_sub", prompt=sp, parent_prompt=meta["prompt"], workspace=sws)
         return a
 
     def run(self, name, workdir: str = None) -> dict:
