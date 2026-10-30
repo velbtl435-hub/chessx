@@ -123,22 +123,48 @@ def check_url(url, allow_private=False, resolver=None) -> URLInfo:
 
 
 # ---------------------------------------------------------------- pinned connections
+def _connect_validated(ips, port, timeout):
+    """Connect to the first reachable address of ips (all already validated by check_url), in order.
+    Only TCP connect failures move on to the next address; the overall timeout is shared across attempts.
+    Never connects to anything outside ips. Raises the last OSError if every address fails."""
+    ips = tuple(ips)
+    if not ips:
+        raise OSError("no validated address to connect to")
+    use_deadline = isinstance(timeout, (int, float)) and timeout is not socket._GLOBAL_DEFAULT_TIMEOUT
+    deadline = time.monotonic() + timeout if use_deadline else None
+    last = None
+    for ip in ips:
+        t = timeout
+        if deadline is not None:
+            t = deadline - time.monotonic()
+            if t <= 0:
+                break
+        try:
+            return socket.create_connection((ip, port), t)
+        except OSError as e:  # refused / unreachable / connect timeout: try the next validated address
+            last = e
+    if last is None:
+        last = socket.timeout(f"connect timed out after {timeout}s ({len(ips)} validated address(es))")
+    raise last
+
+
 class _PinnedHTTP(http.client.HTTPConnection):
-    def __init__(self, host, ip, **kw):
+    def __init__(self, host, ips, **kw):
         super().__init__(host, **kw)
-        self._ip = ip
+        self._ips = tuple(ips)
 
     def connect(self):
-        self.sock = socket.create_connection((self._ip, self.port), self.timeout)
+        self.sock = _connect_validated(self._ips, self.port, self.timeout)
 
 
 class _PinnedHTTPS(http.client.HTTPSConnection):
-    def __init__(self, host, ip, context, **kw):
+    def __init__(self, host, ips, context, **kw):
         super().__init__(host, context=context, **kw)
-        self._ip, self._ctx = ip, context
+        self._ips, self._ctx = tuple(ips), context
 
     def connect(self):
-        sock = socket.create_connection((self._ip, self.port), self.timeout)
+        sock = _connect_validated(self._ips, self.port, self.timeout)
+        # TLS errors are not retried on another address (only TCP connect failures are)
         self.sock = self._ctx.wrap_socket(sock, server_hostname=self.host)
 
 
@@ -150,11 +176,11 @@ class _GuardedHandler(urllib.request.AbstractHTTPHandler):
 
     def _open(self, req, https):
         info = check_url(req.full_url, self.allow_private, self.resolver)
-        ip = info.addresses[0]
+        ips = info.addresses  # validated, in resolver order; fallback stays within this set
         if https:
-            factory = lambda host, **kw: _PinnedHTTPS(host, ip, self.context, **kw)  # noqa: E731
+            factory = lambda host, **kw: _PinnedHTTPS(host, ips, self.context, **kw)  # noqa: E731
         else:
-            factory = lambda host, **kw: _PinnedHTTP(host, ip, **kw)  # noqa: E731
+            factory = lambda host, **kw: _PinnedHTTP(host, ips, **kw)  # noqa: E731
         return self.do_open(factory, req)
 
     def http_open(self, req):

@@ -1,5 +1,6 @@
 """netguard tests: offline (literal IPs + mock resolver) and a local 127.0.0.1 server via allow_private=True."""
 import http.server, threading, unittest, urllib.error
+from unittest import mock
 from chessx_libs.media import netguard as ng
 
 
@@ -135,6 +136,46 @@ class TestOpenURLLocal(unittest.TestCase):
         with ng.open_url(f"http://pinned.test:{self.port}/host", timeout=5, allow_private=True, resolver=res) as r:
             self.assertEqual(r.read(), f"pinned.test:{self.port}".encode())
         self.assertIn("pinned.test", seen)
+
+    def test_fallback_to_next_validated_ip(self):  # 127.0.0.2:<port> is closed -> refused fast
+        tried = []
+        real = ng.socket.create_connection
+
+        def spy(addr, *a, **k):
+            tried.append(addr[0])
+            return real(addr, *a, **k)
+        with mock.patch.object(ng.socket, "create_connection", spy):
+            with ng.open_url(f"http://multi.test:{self.port}/ok", timeout=5, allow_private=True,
+                             resolver=lambda h, p: ["127.0.0.2", "127.0.0.1"]) as r:
+                self.assertEqual((r.status, r.read()), (200, b"hello"))
+        self.assertEqual(tried, ["127.0.0.2", "127.0.0.1"])
+
+    def test_fallback_all_fail(self):
+        tried = []
+        real = ng.socket.create_connection
+
+        def spy(addr, *a, **k):
+            tried.append(addr[0])
+            return real(addr, *a, **k)
+        with mock.patch.object(ng.socket, "create_connection", spy):
+            with self.assertRaises(OSError) as cm:  # URLError wrapping the last connect error
+                ng.open_url(f"http://dead.test:{self.port}/ok", timeout=5, allow_private=True,
+                            resolver=lambda h, p: ["127.0.0.2", "127.0.0.3"])
+        self.assertNotIsInstance(cm.exception, ng.BlockedURL)
+        self.assertEqual(tried, ["127.0.0.2", "127.0.0.3"])  # only validated addresses, in order
+
+    def test_no_retry_after_response(self):  # an HTTP error response is final: no second address tried
+        tried = []
+        real = ng.socket.create_connection
+
+        def spy(addr, *a, **k):
+            tried.append(addr[0])
+            return real(addr, *a, **k)
+        with mock.patch.object(ng.socket, "create_connection", spy):
+            with self.assertRaises(urllib.error.HTTPError):
+                ng.open_url(f"http://multi.test:{self.port}/nope-404", timeout=5, allow_private=True,
+                            resolver=lambda h, p: ["127.0.0.1", "127.0.0.2"])
+        self.assertEqual(tried, ["127.0.0.1"])
 
     def test_rebinding_pinned(self):  # second lookup would say 10.x: connection still goes to the checked IP
         answers = iter([["127.0.0.1"]] * 2 + [["10.9.9.9"]] * 10)
