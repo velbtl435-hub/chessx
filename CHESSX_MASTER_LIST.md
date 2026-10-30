@@ -1,5 +1,5 @@
 # ChessX - Master Task List & Analysis
-# Version 0.5 | Updated 10/30/2026
+# Version 0.5.1 | Updated 10/30/2026
 
 ---
 
@@ -21,6 +21,7 @@
 | A | Docs in PT and JP (separate files) | Accessibility |
 | A | Boot sequence (Linux-style, 5-7s, ASCII, knight logo) | Launch identity |
 | A | Base conversion tools (octal, hex, binary, hex reader, binary reader) | Math utility suite |
+| A | Periodic code audit (bugs, security, optimization, modularization, scalability) | Quality assurance |
 | B | Charts (pie, bar, all types) | Rich visual but complex |
 | B | Information cross-referencing | Differentiating feature |
 | B | Introductory explanatory text | Onboarding |
@@ -37,6 +38,7 @@
 | B | Reverse engineering module | Program analysis |
 | B | Reverse search / detective mode for file origins | Provenance tracking |
 | B | Program reversal (reconstruct how programs were built) | Deep analysis |
+| B | OS-like architecture: kernel, daemons, shell, software suite | Long-term vision |
 | C | Desktop version (Tauri/Electron) | Depends on web being stable |
 | C | Final custom name | Cosmetic |
 | C | Emojis in terminal | Depends on user's terminal |
@@ -60,9 +62,9 @@
 
 1. Test DuckDuckGo with real HTML on user's PC
 2. Plug Brave API with the key the user will configure
-3. Push English README to GitHub
-4. Implement i18n (EN/PT/JP) in the program itself
-5. Create PT and JP docs as separate files
+3. Implement i18n (EN/PT/JP) in the program itself
+4. Create PT and JP docs as separate files
+5. Start modularization (engines/, ui/ folders)
 
 ---
 
@@ -134,6 +136,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 - ChessX is one tool within Artware
 - User: SuperGrok, borrowed ChatGPT, GitHub velbtl435-hub
 - Start date: 10/30/2026
+- Repo: github.com/velbtl435-hub/chessx (commit aaf39929)
 
 ---
 
@@ -172,7 +175,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Save JSON/CSV | Working |
 | Open browser | Working |
 | Auto-refresh | Working |
-| README EN | Written, not pushed |
+| README EN | Pushed (aaf39929) |
 | README PT/JP | Not created |
 | i18n | Not started |
 | Boot sequence | Not started |
@@ -185,6 +188,8 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Reverse engineering module | Not started |
 | Reverse search / detective mode | Not started |
 | Program reversal | Not started |
+| Periodic code audit | Scheduled (recurring) |
+| OS architecture (kernel/daemons/shell) | Vision, not started |
 
 ---
 
@@ -215,3 +220,32 @@ Close v1 with core only. Treat rest as visible roadmap.
 ### 14.3 Notes
 - Reverse engineering should ship as optional module, not core
 - Needs clear disclaimers about authorized use only
+
+---
+
+## 15. PERIODIC CODE AUDIT (RECURRING - USER REQUEST)
+
+Run general audits at regular intervals covering:
+- Errors and bugs
+- Cybersecurity vulnerabilities and breaches
+- Code complications and smells
+- Improvement opportunities
+- Updates and dependency refreshes
+- Optimization passes
+- Modularization progress
+- Scalability assessment
+- Everything else relevant
+
+Audit cadence: every major version bump, or on user request.
+
+---
+
+## 16. OS-LIKE ARCHITECTURE (LONG-TERM VISION - USER REQUEST)
+
+ChessX will evolve into a mini operating system tailored to its purpose:
+- **Kernel**: core process management, resource allocation, boot orchestration
+- **Daemons**: background services (search schedulers, indexers, watchers)
+- **Shell**: command-line interface layer on top of kernel
+- **Software suite**: all ChessX tools as "applications" running on the system
+- Built incrementally over time, module by module
+- Each subsystem maps to a real OS concept but scoped to ChessX's domain
