@@ -12,6 +12,8 @@ but Python may already have copied them (bytes() conversions, the cryptography/a
 GC, swap, core dumps). It reduces exposure; it does not guarantee secrets are gone from memory."""
 import base64, json, os, secrets, tempfile, time
 from . import aead
+from ._filelock import locked as _locked
+import hashlib as _hashlib
 from .kdf import argon2id
 
 FORMAT, VERSION, CHECK = "chessx-keystore", 1, b"chessx-keystore"
@@ -20,6 +22,10 @@ DEFAULT_KDF = {"t": 3, "m": 65536, "p": 4}
 
 class KeystoreError(ValueError):
     pass
+
+
+class KeystoreConflict(KeystoreError):
+    """The keystore file was modified by another process/handle since this one read it."""
 
 
 def zeroize(buf):
@@ -64,6 +70,7 @@ class Keystore:
     def __init__(self, path, data, kek, *, allow_fallback: bool = False):
         self.path, self._data, self._kek = path, data, kek
         self.allow_fallback = allow_fallback
+        self._disk = None  # sha256 of the file bytes we last read/wrote (CAS token, CRY-05)
 
     # ---- lifecycle ----
     @classmethod
@@ -76,6 +83,9 @@ class Keystore:
         data = {"format": FORMAT, "version": VERSION, "kdf": dict(alg="argon2id", salt=_e(salt), **params),
                 "check": _e(aead.seal(bytes(kek), CHECK, _aad("", 0), allow_fallback=allow_fallback)), "keys": {}}
         ks = cls(path, data, kek, allow_fallback=allow_fallback)
+        if overwrite and os.path.exists(path):
+            with open(path, "rb") as fh:
+                ks._disk = _hashlib.sha256(fh.read()).digest()
         ks.save()
         return ks
 
@@ -85,8 +95,9 @@ class Keystore:
             if not keyring_service:
                 raise KeystoreError("password or keyring_service required")
             password = keyring_get_password(keyring_service, keyring_account or path)
-        with open(path) as fh:
-            data = json.load(fh)
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        data = json.loads(raw)
         if data.get("format") != FORMAT or data.get("version") != VERSION:
             raise KeystoreError("unsupported keystore format")
         k = data["kdf"]
@@ -96,20 +107,35 @@ class Keystore:
         except aead.DecryptError:
             zeroize(kek)
             raise KeystoreError("wrong password or corrupted keystore") from None
-        return cls(path, data, kek, allow_fallback=allow_fallback)
+        ks = cls(path, data, kek, allow_fallback=allow_fallback)
+        ks._disk = _hashlib.sha256(raw).digest()
+        return ks
 
     def save(self):
+        """Atomic write under a cross-process lock with compare-and-swap (CRY-05): if another process
+        changed the file since we read it, raise KeystoreConflict instead of silently losing its keys.
+        Re-open and retry the operation in that case."""
         d = os.path.dirname(os.path.abspath(self.path))
-        fd, tmp = tempfile.mkstemp(dir=d, prefix=".ks-")
-        try:
-            os.chmod(tmp, 0o600)
-            with os.fdopen(fd, "w") as fh:
-                json.dump(self._data, fh, indent=1, sort_keys=True)
-            os.replace(tmp, self.path)
-        except BaseException:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
+        body = json.dumps(self._data, indent=1, sort_keys=True).encode()
+        with _locked(self.path):
+            try:
+                with open(self.path, "rb") as fh:
+                    cur = _hashlib.sha256(fh.read()).digest()
+            except FileNotFoundError:
+                cur = None
+            if cur != self._disk:
+                raise KeystoreConflict(f"{self.path} changed on disk since it was opened; re-open and retry")
+            fd, tmp = tempfile.mkstemp(dir=d, prefix=".ks-")
+            try:
+                os.chmod(tmp, 0o600)
+                with os.fdopen(fd, "wb") as fh:
+                    fh.write(body)
+                os.replace(tmp, self.path)
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
+            self._disk = _hashlib.sha256(body).digest()
 
     def close(self):
         zeroize(self._kek)
