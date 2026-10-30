@@ -1,6 +1,6 @@
 """MediaQueue: worker pool over Downloader with per-host rate limit, retries + backoff."""
 import email.utils, queue as _q, threading, time
-from .downloader import Downloader
+from .downloader import DEFAULT_MAX_BYTES, DEFAULT_MAX_SECONDS, Downloader
 from .robots import RateLimiter
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -26,12 +26,14 @@ class MediaQueue:
     Robots-disallowed, size-limited and netguard-blocked (SSRF policy) downloads are not retried.
     """
     def __init__(self, dest="downloads", workers=4, per_host_interval=1.0, retries=3, backoff=0.5,
-                 max_backoff=30.0, max_bytes=None, respect_robots=True, robots_fail_open=False,
-                 user_agent="ChessX", timeout=30, allow_private=False):
+                 max_backoff=30.0, max_bytes=DEFAULT_MAX_BYTES, respect_robots=True, robots_fail_open=False,
+                 user_agent="ChessX", timeout=30, allow_private=False,
+                 max_seconds=DEFAULT_MAX_SECONDS):
         self.workers, self.retries, self.backoff, self.max_backoff = workers, retries, backoff, max_backoff
         self.dl = Downloader(dest, respect_robots=respect_robots, user_agent=user_agent,
                              max_bytes=max_bytes, timeout=timeout, robots_fail_open=robots_fail_open,
-                             limiter=RateLimiter(per_host_interval), allow_private=allow_private)
+                             limiter=RateLimiter(per_host_interval), allow_private=allow_private,
+                     max_seconds=max_seconds)
         self._q, self._lock = _q.Queue(), threading.Lock()
         self.results = []
         self.stats = {"queued": 0, "ok": 0, "failed": 0, "retries": 0, "bytes": 0}

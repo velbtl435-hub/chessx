@@ -13,6 +13,10 @@ MEDIA_EXT = {"image": (".jpg", ".jpeg", ".png", ".gif", ".webp"),
              "audio": (".mp3", ".ogg", ".wav", ".flac"), "video": (".mp4", ".webm", ".mkv")}
 
 
+DEFAULT_MAX_BYTES = 512 * 1024 * 1024   # SEC-03: bounded by default; pass None to disable explicitly
+DEFAULT_MAX_SECONDS = 600                # whole-download deadline; None disables
+
+
 class SizeLimitExceeded(netguard.ResponseTooLarge):
     """Kept for compatibility; size/deadline failures from netguard are ResponseTooLarge (its base)."""
 
@@ -25,11 +29,12 @@ def media_kind(url: str) -> str:
 
 class Downloader:
     def __init__(self, dest="downloads", min_interval=1.0, respect_robots=True, user_agent="ChessX",
-                 max_bytes=None, timeout=30, robots_fail_open=False, limiter=None, allow_private=False):
+                 max_bytes=DEFAULT_MAX_BYTES, timeout=30, robots_fail_open=False, limiter=None,
+                 allow_private=False, max_seconds=DEFAULT_MAX_SECONDS):
         """All fetches go through netguard (http/https only, public destinations, guarded redirects).
         allow_private=True is an explicit opt-in (local test servers)."""
         self.dest, self.ua, self.max_bytes, self.timeout = dest, user_agent, max_bytes, timeout
-        self.allow_private = allow_private
+        self.allow_private, self.max_seconds = allow_private, max_seconds
         self.robots = RobotsCache(user_agent, fail_open=robots_fail_open, timeout=timeout,
                                   allow_private=allow_private) if respect_robots else None
         self.limiter = limiter or RateLimiter(min_interval)
@@ -47,7 +52,7 @@ class Downloader:
         self.limiter.wait(host, self.robots.crawl_delay(url) if self.robots else None)
         path = None
         try:
-            with netguard.open_url(url, timeout=self.timeout, max_bytes=self.max_bytes,
+            with netguard.open_url(url, timeout=self.timeout, max_bytes=self.max_bytes, max_seconds=self.max_seconds,
                                    headers={"User-Agent": self.ua}, allow_private=self.allow_private) as r:
                 res["status"] = r.status
                 first = r.read(chunk)

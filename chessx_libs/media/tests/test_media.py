@@ -179,6 +179,16 @@ class TestQueueRetries(Base):
         self.assertEqual(by["404"]["attempts"], 1)
         self.assertEqual(q.stats["failed"], 2)
 
+    def test_bounded_defaults(self):
+        from chessx_libs.media.downloader import DEFAULT_MAX_BYTES, DEFAULT_MAX_SECONDS
+        self.assertEqual((DEFAULT_MAX_BYTES, DEFAULT_MAX_SECONDS), (512 * 1024 * 1024, 600))
+        d = Downloader(self.tmp)
+        self.assertEqual((d.max_bytes, d.max_seconds), (DEFAULT_MAX_BYTES, DEFAULT_MAX_SECONDS))
+        q = MediaQueue(self.tmp)
+        self.assertEqual((q.dl.max_bytes, q.dl.max_seconds), (DEFAULT_MAX_BYTES, DEFAULT_MAX_SECONDS))
+        r = self.dl(max_seconds=1e-9).fetch(self.base + "/big")
+        self.assertFalse(r["ok"]); self.assertTrue(r.get("size_limited"))
+
     def test_blocked_not_fetched_nor_retried(self):
         q = MediaQueue(self.tmp, per_host_interval=0, retries=3)  # default: public destinations only
         q.add(self.base + "/img.png", "file:///etc/passwd", "http://169.254.169.254/x").run()
