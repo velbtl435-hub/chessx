@@ -5,8 +5,9 @@ from .professor import Professor, PHD_SYSTEM_PROMPT, set_llm
 from .ascii2d import interpret, render
 
 COMMANDS = {"prof": "professor", "professor": "professor", "math": "math",
-            "draw": "draw", "render": "render", "pretty": "render"}
-MULTILINE = {"draw"}          # commands that read a multi-line block from the terminal
+            "draw": "draw", "render": "render", "pretty": "render",
+            "steps": "steps", "check": "check"}
+MULTILINE = {"draw", "check"}          # commands that read a multi-line block from the terminal
 
 
 def _head(text):
@@ -75,6 +76,46 @@ def _render(rest, lang, _rb):
     return render(rest)
 
 
-_HANDLERS = {"professor": _professor, "math": _math, "draw": _draw, "render": _render}
+def _steps(rest, lang, read_block):
+    """steps solve|system|diff|integrate|simplify|limit|matrix <input>"""
+    from . import steps as st
+    kind, _, arg = rest.partition(" ")
+    kind = kind.lower()
+    fns = {"solve": st.solve_steps, "eq": st.solve_steps, "diff": st.diff_steps, "derive": st.diff_steps,
+           "integrate": st.integrate_steps, "int": st.integrate_steps, "simplify": st.simplify_steps,
+           "limit": st.limit_steps, "lim": st.limit_steps, "matrix": st.matrix_steps}
+    if kind == "system":
+        lines = [l for l in arg.split(";") if l.strip()]
+        if not lines and read_block:
+            print("system: one equation per line, empty line to finish")
+            lines = read_block()
+        out = st.system_steps(lines)
+    elif kind in fns:
+        out = fns[kind](arg)
+    else:
+        return "steps: " + " | ".join(["solve", "system", "diff", "integrate", "simplify", "limit", "matrix"])
+    res, n = [], 0
+    for l in out:
+        if l.startswith("  "):
+            res.append("   " + l)
+        else:
+            n += 1
+            res.append("%d. %s" % (n, l))
+    return "\n".join(res)
+
+
+def _check(rest, lang, read_block):
+    """check  -> paste your working, one step per line (or separated by ';'), empty line ends."""
+    from .steps import check_work
+    lines = [l for l in rest.replace(";", "\n").splitlines() if l.strip()]
+    if not lines and read_block:
+        print("check: paste your working, one step per line, empty line to finish")
+        lines = read_block()
+    _, report = check_work(lines)
+    return "\n".join(report)
+
+
+_HANDLERS = {"professor": _professor, "math": _math, "draw": _draw, "render": _render,
+             "steps": _steps, "check": _check}
 __all__ = ["parse", "preprocess", "MathError", "Professor", "PHD_SYSTEM_PROMPT", "set_llm", "dispatch",
            "is_math_command", "COMMANDS", "interpret", "render"]
