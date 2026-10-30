@@ -598,3 +598,20 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 28.4 Rank
 - Class A
+
+---
+
+## 29. SANDBOX (USER REQUEST 10/30/2026)
+
+### 29.1 Goal
+- Isolated environment to run risky programs inside ChessX (suspicious binaries, untrusted scripts, malware samples from the defensive suite)
+
+### 29.2 Features
+- Lightweight containers (namespaces/cgroups; e.g. bubblewrap, firejail, gVisor, Podman rootless) with a pure-Python launcher
+- Isolated network: no network by default, optional fake/sinkhole network with traffic capture
+- Snapshot and rollback of the sandbox filesystem (overlayfs / copy-on-write images)
+- Resource limits (CPU, RAM, time, disk) and kill switch
+- Activity log: syscalls, files touched, network attempts (feeds reversing/ and the defensive suite)
+
+### 29.3 Rank
+- Class A
