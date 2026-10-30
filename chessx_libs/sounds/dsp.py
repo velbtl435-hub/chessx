@@ -109,7 +109,7 @@ def bandpass(x, lo, hi, rate=RATE, order=2):
 
 
 def delay(x, seconds=0.25, feedback=0.35, mix=0.3, rate=RATE, taps=4):
-    np = need_numpy()
+    need_numpy()
     d = int(seconds * rate)
     out = x.copy()
     for k in range(1, taps + 1):

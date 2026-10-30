@@ -28,7 +28,7 @@ def bass(notes, step, rate=RATE, cutoff=500):
 
 
 def arp(chord, step, steps, rate=RATE, cutoff=3000, seed=0):
-    np = need_numpy()
+    need_numpy()
     freqs = [note_freq(n) for n in chord]
     seq = [freqs[i % len(freqs)] * (2 if (i // len(freqs)) % 2 else 1) for i in range(steps)]
     parts = [dsp.osc("saw", f, step, rate) * dsp.exp_decay(int(round(step * rate)), step / 3, rate) for f in seq]

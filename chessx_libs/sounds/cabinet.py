@@ -6,7 +6,7 @@ from .dsp import RATE
 
 
 def _click(rate, seed, length=0.012, lo=1500, hi=8000, tau=0.002):
-    np = need_numpy()
+    need_numpy()
     x = dsp.bandpass(dsp.osc("noise", 0, length, rate, seed=seed), lo, hi, rate)
     return x * dsp.exp_decay(len(x), tau, rate)
 
@@ -53,7 +53,7 @@ def floppy(seconds=1.5, steps=24, grind=True, rate=RATE, seed=0):
     out = np.zeros(n)
     step_dt = min(0.006, seconds / max(steps, 1) / 2)
     r = dsp.rng(seed)
-    pos, at = 0, 0.05
+    at = 0.05
     for k in range(steps):
         s = dsp.mix(0.5 * _resonance(r.uniform(380, 460), 0.03, 0.006, rate), _click(rate, seed + k, 0.008, 300, 3000, 0.002))
         dsp.place(out, s, at * rate)
