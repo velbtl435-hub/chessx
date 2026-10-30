@@ -20,8 +20,16 @@ class RateLimiter:
 
 
 class RobotsCache:
+    """Per-host robots.txt cache.
+
+    fail_open controls what happens when robots.txt cannot be fetched (network error,
+    timeout): False (default) = treat as disallowed, True = treat as allowed.
+    A 404 means "allow all"; 401/403 means "disallow all" (urllib.robotparser rules).
+    Crawl-delay is exposed via crawl_delay() and honored by Downloader/MediaQueue.
+    """
     def __init__(self, user_agent: str = "ChessX", fail_open: bool = False):
         self.ua, self.fail_open, self._cache = user_agent, fail_open, {}
+        self._lock = threading.Lock()
 
     def _parser(self, url: str):
         p = urllib.parse.urlparse(url)
@@ -32,7 +40,8 @@ class RobotsCache:
                 rp.read()
             except Exception:
                 rp = None
-            self._cache[root] = rp
+            with self._lock:
+                self._cache[root] = rp
         return self._cache[root]
 
     def allowed(self, url: str) -> bool:
