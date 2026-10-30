@@ -63,10 +63,10 @@ class Session:
 class Handshake:
     def __init__(self, id_sk: bytes, id_pk: bytes, peer_id_pk: bytes, initiator: bool, *, allow_fallback: bool = False):
         self.allow_fallback = allow_fallback
-        if ed25519_public(id_sk) != id_pk:
+        if ed25519_public(id_sk, allow_fallback=self.allow_fallback) != id_pk:
             raise ValueError("identity keypair mismatch")
         self.id_sk, self.id_pk, self.peer, self.initiator = id_sk, id_pk, peer_id_pk, initiator
-        self.eph_sk, self.eph_pk = x25519_keypair()
+        self.eph_sk, self.eph_pk = x25519_keypair(allow_fallback=self.allow_fallback)
         self._state = "new"
 
     def _transcript(self, ea, eb):
@@ -94,12 +94,12 @@ class Handshake:
             raise HandshakeError("bad hello")
         self.peer_eph = m1[5:]
         try:
-            self._shared = x25519_shared(self.eph_sk, self.peer_eph)
+            self._shared = x25519_shared(self.eph_sk, self.peer_eph, allow_fallback=self.allow_fallback)
         except ValueError:
             raise HandshakeError("bad ephemeral key") from None
         self._th = self._transcript(self.peer_eph, self.eph_pk)
         self._state = "sent2"
-        return M2 + bytes([VERSION]) + self.eph_pk + ed25519_sign(self.id_sk, b"resp" + self._th)
+        return M2 + bytes([VERSION]) + self.eph_pk + ed25519_sign(self.id_sk, b"resp" + self._th, allow_fallback=self.allow_fallback)
 
     def finish(self, m2: bytes):
         self._expect("sent1")
@@ -110,12 +110,12 @@ class Handshake:
         if not ed25519_verify(self.peer, b"resp" + th, sig):
             raise HandshakeError("responder signature invalid (wrong identity or MITM)")
         try:
-            shared = x25519_shared(self.eph_sk, peer_eph)
+            shared = x25519_shared(self.eph_sk, peer_eph, allow_fallback=self.allow_fallback)
         except ValueError:
             raise HandshakeError("bad ephemeral key") from None
         self._state = "done"
         s, r, sid = self._keys(shared, th)
-        return M3 + bytes([VERSION]) + ed25519_sign(self.id_sk, b"init" + th), Session(s, r, sid, allow_fallback=self.allow_fallback)
+        return M3 + bytes([VERSION]) + ed25519_sign(self.id_sk, b"init" + th, allow_fallback=self.allow_fallback), Session(s, r, sid, allow_fallback=self.allow_fallback)
 
     def complete(self, m3: bytes) -> Session:
         self._expect("sent2")

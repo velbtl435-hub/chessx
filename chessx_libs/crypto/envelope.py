@@ -22,8 +22,8 @@ def _sb_key(shared, eph_pk, rpk, context):
 
 
 def seal_box(recipient_pk: bytes, plaintext: bytes, context: bytes = b"", *, allow_fallback: bool = False) -> bytes:
-    eph_sk, eph_pk = x25519_keypair()
-    key = _sb_key(x25519_shared(eph_sk, recipient_pk), eph_pk, recipient_pk, context)
+    eph_sk, eph_pk = x25519_keypair(allow_fallback=allow_fallback)
+    key = _sb_key(x25519_shared(eph_sk, recipient_pk, allow_fallback=allow_fallback), eph_pk, recipient_pk, context)
     header = SB_MAGIC + bytes([VERSION])
     return header + eph_pk + aead.seal(key, plaintext, header + eph_pk + context, allow_fallback=allow_fallback)
 
@@ -35,10 +35,10 @@ def open_box(recipient_sk: bytes, blob: bytes, context: bytes = b"", *, allow_fa
     if header[:4] != SB_MAGIC or header[4] != VERSION:
         raise aead.DecryptError("not a v1 sealed box")
     try:
-        shared = x25519_shared(recipient_sk, eph_pk)
+        shared = x25519_shared(recipient_sk, eph_pk, allow_fallback=allow_fallback)
     except ValueError:
         raise aead.DecryptError("invalid ephemeral key") from None
-    key = _sb_key(shared, eph_pk, x25519_public(recipient_sk), context)
+    key = _sb_key(shared, eph_pk, x25519_public(recipient_sk, allow_fallback=allow_fallback), context)
     return aead.open_sealed(key, body, header + eph_pk + context, allow_fallback=allow_fallback)
 
 

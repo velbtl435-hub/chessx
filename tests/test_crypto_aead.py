@@ -68,6 +68,6 @@ class TestAsymBackend(unittest.TestCase):
         self.assertFalse(S.ed25519_verify(pk, b"m", sig[:63]))
         with self.assertRaises(ValueError):
             S.x25519_shared(a, bytes(32))
-        with mock.patch.object(S, "HAVE_CRYPTOGRAPHY", False):
-            self.assertTrue(S.ed25519_verify(pk, b"m", S.ed25519_sign(sk, b"m")))
-            self.assertEqual(S.x25519_shared(a, B_), px.x25519_shared(a, B_))
+        with mock.patch.object(S, "HAVE_CRYPTOGRAPHY", False), self.assertWarns(A.InsecureFallbackWarning):
+            self.assertTrue(S.ed25519_verify(pk, b"m", S.ed25519_sign(sk, b"m", allow_fallback=True)))
+            self.assertEqual(S.x25519_shared(a, B_, allow_fallback=True), px.x25519_shared(a, B_))

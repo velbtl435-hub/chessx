@@ -30,6 +30,8 @@ header authenticated), `open_sealed(key, blob, aad)` raises `DecryptError`. Rota
 **Strict by default (CRY-01):** with `CRYPTO_BACKEND == "pure"` every AEAD call (and envelope/session/keystore on top)
 raises `AEADUnavailable`. Pass `allow_fallback=True` to use the slow, non-constant-time pure-Python code; each such
 call emits `InsecureFallbackWarning` (a `RuntimeWarning`). The raw `chacha.py`/`aesgcm.py` modules stay pure (reference/KATs).
+Same for asym.py (CRY-02): secret-key X25519/Ed25519 ops raise `AsymUnavailable` without `cryptography` unless
+`allow_fallback=True`; `ed25519_verify` (public data only) keeps working.
 
 ## Stored data (envelope.py)
 `seal_box(recipient_pk, data, context)` / `open_box(recipient_sk, blob, context)`: ephemeral X25519 + HKDF-SHA256 + AEAD,
