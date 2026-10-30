@@ -47,6 +47,7 @@ class Song:
     title: str = ""
     style: str = ""
     sid_filter: dict = None     # SID global filter: {mode, res, cutoff | from/to, voices: [routed channel names]}
+    automation: dict = field(default_factory=dict)  # param -> [(row, value), ...] (rows within one order pass)
 
     @property
     def row_dur(self):
@@ -210,6 +211,8 @@ def _channel_segments(song, ch, loops):
     for _ in range(loops):
         for pname in song.order:
             for cell in song.patterns[pname].get(ch.name, []):
+                if cell is not None and set(cell) == {"auto"}:
+                    cell = None  # automation-only row = hold
                 if cell is None:  # hold
                     if cur is None:
                         cur = dict(rest)
@@ -270,16 +273,95 @@ def _sid_bus(song, c, rate, seed, loops, total):
     n = len(x)
     cut = cutoff_curve(song, f, n, rate, loops)
     from .sid import svf
-    y = svf(x, cut, f.get("res", 0.6), f.get("mode", "lp"), rate)
+    ares = song_automation(song).get("res")
+    res = auto_curve(song, ares, n, rate, loops) if ares else f.get("res", 0.6)
+    y = svf(x, cut, res, f.get("mode", "lp"), rate)
     return dsp.normalize(y, float(np.abs(x).max())), {ch.name for ch in routed}  # keep pre-filter level
 
 
-def cutoff_curve(song, f, n, rate, loops=1):
-    """Cutoff per sample: from/to exponential sweep over the whole render, or fixed 'cutoff'."""
+AUTO_PARAMS = {"cutoff": (20.0, 20000.0), "res": (0.0, 1.0), "echo_fb": (0.0, 0.9), "echo_mix": (0.0, 1.0)}
+
+
+def song_automation(song):
+    """Merge Song.automation with per-cell automation effects (f/q/e/m) -> {param: sorted [(row, value)]}.
+    Rows are absolute within one pass of the order list (pattern rows concatenated in order)."""
+    pts = {k: list(v) for k, v in (song.automation or {}).items() if k != "echo_delay"}
+    for k in pts:
+        if k not in AUTO_PARAMS:
+            raise ValueError(f"unknown automation parameter {k!r}; use {sorted(AUTO_PARAMS)}")
+    base = 0
+    for pname in song.order:
+        pat = song.patterns[pname]
+        for ch in song.channels:
+            for r, cell in enumerate(pat.get(ch.name, [])):
+                for k, v in ((cell or {}).get("auto") or {}).items():
+                    pts.setdefault(k, []).append((base + r, v))
+        base += len(next(iter(pat.values()), []))
+    out = {}
+    for k, v in pts.items():
+        lo, hi = AUTO_PARAMS[k]
+        out[k] = sorted({float(r): min(hi, max(lo, float(x))) for r, x in v}.items())
+    return out
+
+
+def auto_curve(song, points, n, rate, loops=1, log=False):
+    """Per-sample curve from automation points (linear between rows, held at ends; repeats each loop pass)."""
     np = need_numpy()
+    rows = max(1, song.rows())
+    t = np.arange(n) / rate / song.row_dur
+    t = np.where(t >= rows * loops, rows - 1e-9, t % rows)
+    r, v = np.array([p[0] for p in points]), np.array([p[1] for p in points])
+    if log:
+        return np.exp(np.interp(t, r, np.log(np.maximum(v, 1e-6))))
+    return np.interp(t, r, v)
+
+
+def automated_echo(x, rate, fb, mix, delay=0.12, tail=1.5):
+    """Feedback delay with per-sample feedback/mix curves (block-vectorised by delay length). Adds a tail."""
+    np = need_numpy()
+    d = max(1, int(delay * rate))
+    n = len(x) + int(tail * rate)
+    pad = lambda c: np.concatenate([c, np.full(n - len(c), c[-1] if len(c) else 0.0)])
+    xs, fb, mix = np.concatenate([x, np.zeros(n - len(x))]), pad(np.asarray(fb, float)), pad(np.asarray(mix, float))
+    wet = np.zeros(n)  # wet[i] = delayed (x + feedback) line
+    line = xs.copy()
+    for s in range(d, n, d):
+        e = min(n, s + d)
+        wet[s:e] = line[s - d:e - d]
+        line[s:e] = xs[s:e] + fb[s:e] * wet[s:e]
+    return xs + mix * wet
+
+
+def cutoff_curve(song, f, n, rate, loops=1):
+    """Cutoff per sample: automation 'cutoff' if present, else from/to exponential sweep, or fixed 'cutoff'."""
+    np = need_numpy()
+    auto = song_automation(song).get("cutoff")
+    if auto:
+        return auto_curve(song, auto, n, rate, loops, log=True)
     c0 = float(f.get("from", f.get("cutoff", 2000)))
     c1 = float(f.get("to", c0))
     return c0 * (c1 / c0) ** np.linspace(0, 1, n)
+
+
+def _apply_automation(song, x, auto, rate, loops):
+    """Song-level automation: global cutoff/res filter (non-SID chips; SID automates its own filter) and
+    automated feedback echo (echo_fb / echo_mix)."""
+    if not auto:
+        return x
+    np = need_numpy()
+    from .sid import svf
+    if ("cutoff" in auto or "res" in auto) and not (song.chip == "sid" and song.sid_filter):
+        n = len(x)
+        cut = auto_curve(song, auto["cutoff"], n, rate, loops, log=True) if "cutoff" in auto else 20000.0
+        res = auto_curve(song, auto["res"], n, rate, loops) if "res" in auto else 0.0
+        peak = float(np.abs(x).max()) if n else 0.0
+        x = dsp.normalize(svf(x, cut, res, "lp", rate), peak)
+    if "echo_fb" in auto or "echo_mix" in auto:
+        n = len(x)
+        fb = auto_curve(song, auto["echo_fb"], n, rate, loops) if "echo_fb" in auto else np.full(n, 0.4)
+        mix = auto_curve(song, auto["echo_mix"], n, rate, loops) if "echo_mix" in auto else np.full(n, 0.35)
+        x = automated_echo(x, rate, fb, mix, delay=float((song.automation or {}).get("echo_delay", 0.12)))
+    return x
 
 
 def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=False):
@@ -287,6 +369,11 @@ def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=Fal
     np = need_numpy()
     c = get_chip(song.chip)
     total = int(round(song.duration(loops) * rate))
+    auto = song_automation(song)
+    echo_auto = "echo_fb" in auto or "echo_mix" in auto
+    if echo_auto and song.chip == "snes":  # automated echo replaces the fixed per-channel S-DSP echo
+        c = type(c)()
+        c.post = lambda x, rate, seed: x
     tracks, pans = [], []
     routed = set()
     if song.chip == "sid" and song.sid_filter:
@@ -312,8 +399,12 @@ def render_song(song, rate=dsp.RATE, seed=0, loops=1, crush=True, stereo_out=Fal
         for t, p in zip(tracks, pans):
             s = stereo(t, pan=p, width=0.3 if c.era == "32bit" else 0.0, rate=rate)
             st[:len(s)] += s
+        if auto:
+            chans = [_apply_automation(song, st[:, k], auto, rate, loops) for k in (0, 1)]
+            st = np.stack([chans[0], chans[1]], axis=1)
         return dsp.normalize(st, 0.89)
     x = dsp.mix(*tracks)
+    x = _apply_automation(song, x, auto, rate, loops)
     if crush:
         x = era_crush(dsp.normalize(x, 0.89), c.era, rate)
     return dsp.normalize(x, 0.89)
@@ -351,8 +442,9 @@ def _chord(mode, root, degree):
     return [root + sc[(degree + k) % 7] + 12 * ((degree + k) // 7) for k in (0, 2, 4)]
 
 
-def compose(chip_name, style="title", seed=0, bars=4, root=None):
-    """Deterministic procedural Song for chip/style/seed. bars = bars of 16 rows (one chord per bar)."""
+def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None):
+    """Deterministic procedural Song for chip/style/seed. bars = bars of 16 rows (one chord per bar).
+    automation: {param: [(row, value), ...]} for cutoff (Hz), res (0..1), echo_fb (0..0.9), echo_mix (0..1)."""
     np = need_numpy()
     if style not in STYLES:
         raise KeyError(f"unknown style {style!r}; choose from {sorted(STYLES)}")
@@ -459,7 +551,7 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
         sid_filter = dict(SID_FILTER[style], voices=voices)
     return Song(chip=chip_name, bpm=st["bpm"], speed=st["speed"], channels=chans, patterns=patterns,
                 order=order, loop=style not in ("game_over", "victory"), title=f"{style} #{seed}", style=style,
-                sid_filter=sid_filter)
+                sid_filter=sid_filter, automation=dict(automation or {}))
 
 
 def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1, loop=False):
@@ -482,11 +574,20 @@ def parse_note(tok):
     return n + 12 * (int(tok[i:]) + 1)
 
 
+def _bad(tok):
+    raise ValueError(f"only automation effects (f/q/e/m) are allowed on a hold row: {tok!r}")
+
+
 def parse_cell(tok):
     """'.'=hold, '-' or '---'=off, 'k'/'s'/'h'=drum, 'C4' note, effects after ':' e.g. C4:a047 v u12 d5 @7 w1.
-    a=arpeggio (hex semitone digits), v=vibrato, u/d=slide up/down N semitones, @=volume 0-9, w=duty 0-3."""
+    a=arpeggio (hex semitone digits), v=vibrato, u/d=slide up/down N semitones, @=volume 0-9, w=duty 0-3.
+    Automation (song-wide, set at this row, linear to the next point): f<Hz> cutoff, q<0-9> resonance,
+    e<0-9> echo feedback (tenths, max 0.9), m<0-9> echo mix. A bare '.:f800' sets automation on a hold row."""
     if tok in (".", "..", "..."):
         return None
+    if tok.startswith(".:"):
+        c = parse_cell("C4" + tok[1:])
+        return {"auto": c["auto"]} if set(c) == {"n", "auto"} else _bad(tok)
     if set(tok) == {"-"}:
         return {"off": True}
     head, *fx = tok.split(":")
@@ -508,6 +609,13 @@ def parse_cell(tok):
             cell["vol"] = int(v) / 9
         elif k == "w":
             cell["duty"] = (0.125, 0.25, 0.5, 0.75)[int(v)]
+        elif k in "fqem":  # automation points at this row
+            try:
+                x = float(v)
+            except ValueError:
+                raise ValueError(f"bad automation value {f!r} in {tok!r}") from None
+            name, val = {"f": ("cutoff", x), "q": ("res", x / 9), "e": ("echo_fb", x / 10), "m": ("echo_mix", x / 9)}[k]
+            cell.setdefault("auto", {})[name] = val
         else:
             raise ValueError(f"unknown effect {f!r} in {tok!r}")
     return cell

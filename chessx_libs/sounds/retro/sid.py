@@ -39,15 +39,15 @@ def sid_noise(ph, seed=0):
 
 
 def svf(x, cutoff, res=0.5, mode="lp", rate=44100):
-    """Chamberlin state-variable filter; cutoff scalar or per-sample array; res 0..1."""
+    """Chamberlin state-variable filter; cutoff and res (0..1) scalar or per-sample arrays."""
     np = need_numpy()
     fc = np.broadcast_to(np.asarray(cutoff, float), x.shape)
     F = 2 * np.sin(np.pi * np.clip(fc, 20, rate / 6) / rate)
-    q = 1.0 - 0.9 * np.clip(res, 0, 1)
+    q = np.broadcast_to(1.0 - 0.9 * np.clip(np.asarray(res, float), 0, 1), x.shape)  # res scalar or per-sample
     lp = bp = 0.0
     out = np.empty_like(x)
     for i, v in enumerate(x):
-        hp = v - lp - q * bp
+        hp = v - lp - q[i] * bp
         bp += F[i] * hp
         lp += F[i] * bp
         out[i] = lp if mode == "lp" else bp if mode == "bp" else hp

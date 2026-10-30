@@ -107,6 +107,30 @@ class TestRetroMusic(unittest.TestCase):
         self.assertFalse(np.array_equal(a, b))
         self.assertLessEqual(float(np.abs(b).max()), 0.9)
 
+    def test_automation_compose_and_text(self):
+        auto = {"cutoff": [(0, 300), (31, 6000)], "res": [(0, 0.2), (31, 0.8)],
+                "echo_fb": [(0, 0.0), (16, 0.7)], "echo_mix": [(0, 0.1), (31, 0.6)]}
+        for chip in ("nes", "sid", "snes"):
+            s = M.compose(chip, "title", 3, bars=2, automation=auto)
+            x = M.render_song(s)
+            self.assertLessEqual(float(np.abs(x).max()), 0.9)
+            self.assertTrue(np.isfinite(x).all())
+            self.assertFalse(np.array_equal(x[:len(x) // 2], M.render_song(M.compose(chip, "title", 3, bars=2))[:len(x) // 2]))
+        s = M.parse_song("chip gb\npattern A\nsquare1 C5:f300:q2:e0:m1 . . . E5 . .:f5000:e7:m6 . G5 . . .\n")
+        a = M.song_automation(s)
+        self.assertEqual(a["cutoff"], [(0.0, 300.0), (6.0, 5000.0)])
+        self.assertAlmostEqual(a["echo_fb"][1][1], 0.7)
+        self.assertEqual(set(s.patterns["A"]["square1"][6]), {"auto"})
+        segs = M._channel_segments(s, s.channels[0], 1)
+        self.assertEqual(sum(1 for g in segs if g["wave"] == "tone"), 3)  # automation-only row is a hold
+        x = M.render_song(s)
+        self.assertGreater(len(x), int(s.duration() * 44100))  # echo tail
+        self.assertLessEqual(float(np.abs(x).max()), 0.9)
+        with self.assertRaises(ValueError):
+            M.parse_cell(".:a047")
+        with self.assertRaises(ValueError):
+            M.render_song(M.compose("nes", bars=1, automation={"wobble": [(0, 1)]}))
+
     def test_loop_option(self):
         a = events.render("retro.gb.music.victory", seed=1)
         b = events.render("retro.gb.music.victory", seed=1, loops=2)

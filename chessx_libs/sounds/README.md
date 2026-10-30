@@ -110,9 +110,16 @@ filter-enable bit. `SID().voices3(v1, v2, v3, filter={"mode": "lp", "res": .6, "
 and `Song.sid_filter = {..., "voices": ["voice2"]}` (used by `compose("sid", ...)`) sum the routed voices into that single
 filter; unrouted voices bypass it.
 
+### Filter / echo automation
+`Song.automation = {param: [(row, value), ...]}` (rows within one pass of the order list; linear between points,
+held at the ends, repeated every loop) for `cutoff` (Hz), `res` (0..1), `echo_fb` (0..0.9), `echo_mix` (0..1), plus
+optional scalar `echo_delay` (s). Pass it via `compose(..., automation=...)` or per-cell effects in the text format:
+`f<Hz>` cutoff, `q<0-9>` resonance, `e<0-9>` echo feedback (tenths), `m<0-9>` echo mix; `.:f800` sets a point on a
+hold row. On SID it drives the global filter; on other chips a song-level LP filter. Echo automation adds a feedback
+delay bus (on SNES it replaces the fixed S-DSP echo). Songs without automation render exactly as before.
+
 ## Backlog (retro)
 
-* Filter/echo automation over time (per row/pattern), not one sweep or fixed echo per channel.
 * True OPL rhythm mode (BD/SD/TT/CY/HH from shared operators) instead of rhythm-style kit.
 * Loop tail crossfade (echo/reverb tail wrapping into the next pass) for seamless loops.
 * Per-channel instruments in the compact text format (e.g. `inst pulse1 duty=0.125`).
