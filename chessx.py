@@ -166,6 +166,16 @@ def selftest():
     check("detective", det)
     check("bases", lambda: bases.convert("ff", 16, 2) == "11111111" or 1 / 0)
     check("scheduler", lambda: scheduler.Scheduler().status())
+    def agents_check():
+        from chessx_libs.agents import Agent, Limits, AgentLimitError
+        from chessx_libs import tamagox
+        r = Agent("st", limits=Limits(max_depth=2)); r.spawn("a").spawn("b")
+        try:
+            r.children[0].children[0].spawn("c"); raise AssertionError("depth guard")
+        except AgentLimitError:
+            pass
+        p = tamagox.Pet("st"); tamagox.attach(r, p, force=True); r.run(); assert p.xp > 0
+    check("agents", agents_check)
     check("audit", lambda: audit.audit_tree(os.path.join(os.path.dirname(os.path.abspath(__file__)), "chessx_libs")))
     check("mathx", lambda: mathx.dispatch("prof ohm V=12 R=4").startswith("I = V/R") or 1 / 0)
     return ok

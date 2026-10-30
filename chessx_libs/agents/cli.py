@@ -28,7 +28,9 @@ def main(argv=None, factory: Factory = None):
     sp.add_parser("new", help="interactive wizard")
     sp.add_parser("list")
     s = sp.add_parser("show"); s.add_argument("name")
-    r = sp.add_parser("run"); r.add_argument("name")
+    r = sp.add_parser("run"); r.add_argument("name"); r.add_argument("--pet", action="store_true", help="TamagóX: run as pet")
+    pt = sp.add_parser("pet", help="TamagóX pet of an agent"); pt.add_argument("name")
+    pt.add_argument("action", nargs="?", default="show", choices=["show", "feed", "play", "sleep", "revive", "json"])
     d = sp.add_parser("delete"); d.add_argument("name")
     i = sp.add_parser("import"); i.add_argument("path")
     sp.add_parser("types")
@@ -53,7 +55,22 @@ def main(argv=None, factory: Factory = None):
     elif a.cmd == "show":
         out = f.load(a.name).to_dict()
     elif a.cmd == "run":
-        out = f.run(a.name)
+        if a.pet:
+            import os
+            from chessx_libs import tamagox
+            store = tamagox.PetStore(os.path.join(f.root, "pets")); pet = store.get(a.name)
+            ag = f.build(a.name); tamagox.attach(ag, pet, store, force=True)
+            out = ag.run(); store.save(pet); print(pet.render())
+        else:
+            out = f.run(a.name)
+    elif a.cmd == "pet":
+        import os
+        from chessx_libs import tamagox
+        store = tamagox.PetStore(os.path.join(f.root, "pets")); f.load(a.name); pet = store.get(a.name)
+        if a.action in ("feed", "play", "sleep", "revive"):
+            getattr(pet, a.action)()
+        store.save(pet)
+        out = pet.to_dict() if a.action == "json" else pet.render()
     elif a.cmd == "delete":
         f.delete(a.name); out = "deleted " + a.name
     elif a.cmd == "import":
