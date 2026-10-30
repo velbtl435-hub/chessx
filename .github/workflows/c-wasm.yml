@@ -1,0 +1,59 @@
+name: c-wasm
+# Team 1: C / WASI pipeline (c/). Builds native + wasm32-wasip1, runs parity tests, uploads .wasm.
+on:
+  push:
+    paths: ["c/**", "chessx_libs/native/**", "tests/test_native.py", ".github/workflows/c-wasm.yml"]
+  pull_request:
+    paths: ["c/**", "chessx_libs/native/**", "tests/test_native.py", ".github/workflows/c-wasm.yml"]
+  workflow_dispatch:
+
+env:
+  WASI_SDK_VERSION: "34"
+  WASMTIME_VERSION: "50.0.1"
+  WASMER_VERSION: "7.5.0"
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install wasi-sdk
+        run: |
+          curl -sSLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz
+          sudo tar xzf wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz -C /opt
+          sudo ln -sfn /opt/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux /opt/wasi-sdk
+          /opt/wasi-sdk/bin/clang --version
+      - name: Install wasmtime + wasmer
+        run: |
+          curl -sSL https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz | tar xJ
+          sudo cp wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime /usr/local/bin/
+          mkdir wm && curl -sSL https://github.com/wasmerio/wasmer/releases/download/v${WASMER_VERSION}/wasmer-linux-amd64.tar.gz | tar xz -C wm
+          sudo cp wm/bin/wasmer /usr/local/bin/
+          wasmtime --version && wasmer --version
+      - name: Build native + wasm
+        run: make -C c all
+      - name: Parity (python / ctypes / native CLI / wasmtime / wasmer)
+        run: make -C c test
+      - name: Python unit tests
+        run: python -m unittest tests.test_native -v
+      - name: Browser WASI shim check (Node)
+        run: |
+          mkdir -p /tmp/js && cd /tmp/js && npm init -y >/dev/null && npm i @bjorn3/browser_wasi_shim@0.4
+          cp "$GITHUB_WORKSPACE/c/tests/js_shim_test.mjs" . && node js_shim_test.mjs "$GITHUB_WORKSPACE/c/build/wasm/hello_fusion.reactor.wasm"
+      - name: Size report
+        run: make -C c size
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chessx-wasm
+          path: c/build/wasm/*.wasm
+          if-no-files-found: error
+
+  native-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C c native CC=clang && python3 -m unittest tests.test_native -v

@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 chessx_results.json
 chessx_results.csv
+c/build/
