@@ -1,5 +1,6 @@
 """Tiny i18n: English default, Portuguese, Japanese. Usage: t('welcome'); t.set_lang('pt')."""
 from .strings import STRINGS
+from .namespaces import NS_STRINGS, NAMESPACES, register as register_namespace
 
 KEYS = tuple(STRINGS["en"])
 ALIASES = {"jp": "ja", "pt-br": "pt", "pt_br": "pt", "en-us": "en"}
@@ -18,7 +19,8 @@ class Translator:
         return lang
 
     def __call__(self, key: str, **kw) -> str:
-        text = STRINGS[self.lang].get(key) or STRINGS["en"].get(key, key)
+        text = (STRINGS[self.lang].get(key) or NS_STRINGS[self.lang].get(key)
+                or STRINGS["en"].get(key) or NS_STRINGS["en"].get(key, key))
         return text.format(**kw) if kw else text
 
     def missing(self):
