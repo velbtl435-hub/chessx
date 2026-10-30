@@ -7,7 +7,7 @@ import os, threading, urllib.error, urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from . import netguard
 from .robots import RobotsCache, RateLimiter
-from .detect import detect_type, kind_of, ext_for, unique_path
+from .detect import detect_type, kind_of, ext_for, reserve_path
 
 MEDIA_EXT = {"image": (".jpg", ".jpeg", ".png", ".gif", ".webp"),
              "audio": (".mp3", ".ogg", ".wav", ".flac"), "video": (".mp4", ".webm", ".mkv")}
@@ -61,11 +61,9 @@ class Downloader:
                 sub = os.path.join(self.dest, kind)
                 os.makedirs(sub, exist_ok=True)
                 stem = os.path.splitext(os.path.basename(urllib.parse.urlparse(url).path))[0] or "index"
-                with self._name_lock:
-                    path = unique_path(sub, stem, ext_for(mime, url))
-                    open(path, "wb").close()  # reserve name
+                path, fd = reserve_path(sub, stem, ext_for(mime, url))  # atomic O_EXCL, sanitized
                 size = 0
-                with open(path, "wb") as fh:
+                with os.fdopen(fd, "wb") as fh:
                     b = first
                     while b:
                         size += len(b)

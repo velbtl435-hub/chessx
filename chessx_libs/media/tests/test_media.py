@@ -10,6 +10,30 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 100
 COUNTS = {}
 
 
+class TestFilenames(unittest.TestCase):
+    def test_safe_names(self):
+        from chessx_libs.media import safe_stem, ext_for, reserve_path
+        self.assertEqual(safe_stem("../../etc/pa ss"), "_.._etc_pa_ss")
+        self.assertEqual(safe_stem("...hidden"), "hidden")
+        self.assertEqual(safe_stem("CON"), "_CON")
+        self.assertEqual(safe_stem("nul.txt"), "_nul.txt")
+        self.assertEqual(len(safe_stem("a" * 500)), 100)
+        self.assertEqual(safe_stem(""), "index")
+        self.assertEqual(ext_for("application/x-unknown-thing", "http://h/x.exe"), ".bin")
+        self.assertEqual(ext_for("", "http://h/evil.sh"), ".bin")
+        self.assertEqual(ext_for("text/html"), ".bin")
+        self.assertEqual(ext_for("image/png", "http://h/x.exe"), ".png")
+        d = tempfile.mkdtemp()
+        try:
+            names = []
+            for _ in range(3):
+                p, fd = reserve_path(d, "../x", ".png"); os.close(fd); names.append(os.path.basename(p))
+                self.assertEqual(os.path.dirname(p), os.path.realpath(d))
+            self.assertEqual(names, ["_x.png", "_x-1.png", "_x-2.png"])
+        finally:
+            shutil.rmtree(d)
+
+
 class H(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
 
