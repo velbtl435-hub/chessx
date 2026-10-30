@@ -39,12 +39,7 @@ def fs_trail(path: str) -> dict:
     st = os.stat(path)
     out = {"path": os.path.abspath(path), "size": st.st_size, "mtime": _ts(st.st_mtime), "ctime": _ts(st.st_ctime),
            "atime": _ts(st.st_atime), "owner_uid": st.st_uid, "mode": oct(st.st_mode & 0o7777), "xattrs": {}, "sidecars": {}}
-    if hasattr(os, "listxattr"):  # e.g. user.xdg.origin.url / referrer.url set by browsers & wget
-        try:
-            for k in os.listxattr(path):
-                out["xattrs"][k] = os.getxattr(path, k)[:512].decode("utf-8", "replace")
-        except OSError:
-            pass
+    out["xattrs"] = read_xattrs(path)  # e.g. user.xdg.origin.url / referrer.url set by browsers & wget
     for suffix in (":Zone.Identifier", ".Zone.Identifier"):  # Windows MOTW copied as a sidecar file
         sc = path + suffix
         if os.path.isfile(sc):
@@ -94,22 +89,62 @@ def pe_version_info(data: bytes) -> dict:
     return out
 
 
-def _pdf_info(data):
-    return {k: m.group(1).decode("latin-1")[:200] for k in ("Title", "Author", "Creator", "Producer", "CreationDate", "ModDate")
-            for m in [re.search(rb"/" + k.encode() + rb"\s*\(([^)]*)\)", data)] if m}
+def pdf_info(data: bytes, limit=200) -> dict:
+    """PDF Info dictionary literals (Title, Author, Creator, Producer, dates). limit=None: no truncation."""
+    out = {}
+    for k in ("Title", "Author", "Creator", "Producer", "CreationDate", "ModDate"):
+        m = re.search(rb"/" + k.encode() + rb"\s*\(([^)]*)\)", data)
+        if m:
+            out[k] = m.group(1).decode("latin-1")[:limit]
+    return out
 
 
-def _png_text(data):
+def png_text(data: bytes, limit=200) -> dict:
+    """PNG tEXt chunks as {keyword: text}. limit=None: no truncation."""
     out, i = {}, 8
     while i + 8 <= len(data):
         ln, typ = struct.unpack(">I4s", data[i:i + 8])
         if typ == b"tEXt":
             k, _, v = data[i + 8:i + 8 + ln].partition(b"\x00")
-            out[k.decode("latin-1")] = v.decode("latin-1")[:200]
+            out[k.decode("latin-1")] = v.decode("latin-1")[:limit]
         if typ == b"IEND":
             break
         i += 12 + ln
     return out
+
+
+def office_core_props(z: "zipfile.ZipFile") -> dict:
+    """creator/lastModifiedBy/created/modified from an OOXML docProps/core.xml (docx/xlsx/pptx)."""
+    out = {}
+    if "docProps/core.xml" in z.namelist():
+        core = z.read("docProps/core.xml").decode("utf-8", "replace")
+        for tag in ("creator", "lastModifiedBy", "created", "modified"):
+            m = re.search(r"<[^>]*" + tag + r"[^>]*>([^<]*)<", core)
+            if m:
+                out[tag] = m.group(1)
+    return out
+
+
+def jpeg_exif_strings(data: bytes, n: int = 12) -> list:
+    i = data.find(b"Exif\x00\x00")
+    if i < 0:
+        return []
+    return [x.decode() for x in re.findall(rb"[\x20-\x7e]{4,40}", data[i:i + 4096])[:n]]
+
+
+def read_xattrs(path: str, limit=512) -> dict:
+    """Extended attributes (user.xdg.origin.url, referrer.url...). limit=None: full values."""
+    out = {}
+    if hasattr(os, "listxattr"):
+        try:
+            for k in os.listxattr(path):
+                out[k] = os.getxattr(path, k)[:limit].decode("utf-8", "replace")
+        except OSError:
+            pass
+    return out
+
+
+_pdf_info, _png_text = pdf_info, png_text  # backwards-compatible private names
 
 
 EMBEDDED = [(b"PK\x03\x04", "zip"), (b"%PDF-", "pdf"), (b"\x89PNG\r\n\x1a\n", "png"), (b"\x1f\x8b\x08", "gzip"),
@@ -133,6 +168,7 @@ def embedded_resources(data: bytes, limit: int = 32) -> list:
                 try:
                     z = zipfile.ZipFile(io.BytesIO(data[i:]))
                     item["entries"] = z.namelist()[:20]; item["comment"] = z.comment.decode("latin-1")[:200]
+                    item.update(office_core_props(z))
                 except Exception:
                     pass
             elif kind == "pdf":
@@ -155,6 +191,8 @@ def metadata(data: bytes, hdr: dict) -> dict:
         out["pdf"] = _pdf_info(data)
     if data.startswith(b"\x89PNG"):
         out["png_text"] = _png_text(data)
+    if data.startswith(b"\xff\xd8"):
+        out["exif_strings"] = jpeg_exif_strings(data)
     if data.startswith(b"PK\x03\x04"):
         try:
             z = zipfile.ZipFile(io.BytesIO(data))
