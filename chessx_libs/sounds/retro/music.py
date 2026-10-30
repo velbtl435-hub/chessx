@@ -423,7 +423,9 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None):
                 order=order, loop=style not in ("game_over", "victory"), title=f"{style} #{seed}", style=style)
 
 
-def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1):
+def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1, loop=False):
+    """loops=N repeats the order list N times; loop=True is shorthand for loops=2 (seamless repeat)."""
+    loops = max(1, int(loops)) if not (loop and loops == 1) else 2
     return render_song(compose(chip_name, style, seed, bars), rate=rate, seed=seed, loops=loops)
 
 
