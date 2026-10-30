@@ -4,5 +4,7 @@ All procedural (numpy, scipy optional). See README in chessx_libs/sounds."""
 from .crush import bitcrush, srcrush, era_crush, stereo, write_wav_stereo, ERAS
 from .chips import CHIPS, chip, Chip
 from .sfx import RECIPES, render_sfx, ERA_OF
+from .music import Song, Channel, LAYOUTS, STYLES, compose, render_song, render_music, parse_song
 __all__ = ["bitcrush", "srcrush", "era_crush", "stereo", "write_wav_stereo", "ERAS", "CHIPS", "chip", "Chip",
-           "RECIPES", "render_sfx", "ERA_OF"]
+           "RECIPES", "render_sfx", "ERA_OF",
+           "Song", "Channel", "LAYOUTS", "STYLES", "compose", "render_song", "render_music", "parse_song"]

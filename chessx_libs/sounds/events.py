@@ -191,6 +191,14 @@ def _register_retro():
         for _s in RECIPES:
             register(f"retro.{_c}.{_s}",
                      lambda rate=RATE, seed=0, _c=_c, _s=_s, **kw: render_sfx(_c, _s, rate=rate, seed=seed), "retro")
+    from .retro import music as _m
+    for _c in _m.LAYOUTS:  # procedural tracker music, short by default (bars=2)
+        for _st in _m.STYLES:
+            register(f"retro.{_c}.music.{_st}",
+                     lambda rate=RATE, seed=0, _c=_c, _st=_st, bars=2, **kw:
+                     _m.render_music(_c, _st, seed=seed, bars=bars, rate=rate), "retro")
+    register("retro.nes.music.demo",
+             lambda rate=RATE, seed=0, **kw: _m.render_song(_m.parse_song(_m.DEMO), rate=rate, seed=seed), "retro")
 
 
 _register_retro()
