@@ -50,7 +50,9 @@ def play(name: str, enabled: bool = True) -> str:
     if not enabled or PLAYER == "noop" or os.environ.get("CHESSX_MUTE"):
         return "noop"
     try:
-        path = save_wav(name, os.path.join(tempfile.gettempdir(), f"chessx_{name}.wav"))
+        fd, tmp = tempfile.mkstemp(prefix=f"chessx_{name}_", suffix=".wav")  # A3: random name
+        os.close(fd)
+        path = save_wav(name, tmp)
         if PLAYER == "winsound":
             import winsound
             winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)

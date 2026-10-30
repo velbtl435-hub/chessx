@@ -43,7 +43,9 @@ def render(event, rate=RATE, seed=0, **kw):
 def save(event, path=None, rate=RATE, seed=0, **kw):
     """Render and write a 16-bit mono WAV; returns path (temp file if path is None)."""
     _check(event)
-    path = path or os.path.join(tempfile.gettempdir(), f"chessx_{event}_{seed}.wav")
+    if not path:  # A3: unpredictable, exclusively-created temp name (no /tmp symlink races)
+        fd, path = tempfile.mkstemp(prefix=f"chessx_{event}_", suffix=".wav")
+        os.close(fd)
     return dsp.write_wav(path, render(event, rate, seed, **kw), rate)
 
 
