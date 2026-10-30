@@ -68,3 +68,17 @@ from chessx_libs.sounds import events
 events.save("retro.sid.laser", "laser.wav", seed=1)
 from chessx_libs.sounds.retro import render_sfx; x = render_sfx("fm", "explosion")
 ```
+
+### Retro music — `sounds.retro.music` (tracker + procedural composer)
+
+* Tracker model: `Song(chip, bpm, speed, channels, patterns, order, loop)`; row = `speed * 2.5 / bpm` s.
+  Cells: note / hold / note-off / drum (`k` kick, `s` snare, `h` hat via the chip's noise+tone voices),
+  effects arpeggio, vibrato, slide (portamento), volume, duty/PWM.
+* Channel layouts (`LAYOUTS`): NES 2 pulse+tri+noise(+dpcm), GB 4, SID 3 (ring-mod lead + hard-sync bass in
+  battle), AY 3+noise (hw-envelope bass), SN 3+noise, YM2612 6, OPL2 9, SNES 8 (echo), PS1 24 (reverb, stereo).
+* `compose(chip, style, seed, bars)` → deterministic Song (mode, chord progression, bass, arp, melody, drums).
+  Styles: `title`, `battle`, `victory`, `chess_thinking`, `game_over`.
+* `render_song(song, loops=1, stereo_out=False)`, `render_music(chip, style, seed, bars=2)`.
+* Text format: `parse_song(text)` — see `music.DEMO`:
+  `pulse1 E5 . G5:v --- C5:a047 D5:u2:@6:w1` (`.` hold, `---` off, `:a` arp hex, `:v` vib, `:u/:d` slide, `:@` vol 0-9, `:w` duty 0-3).
+* Events: `retro.<chip>.music.<style>` (2 bars by default, `bars=` kwarg) and `retro.nes.music.demo`, category `retro`.
