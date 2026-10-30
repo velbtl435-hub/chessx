@@ -5,6 +5,7 @@ Usage:
   python3 chessx.py                 interactive shell
   python3 chessx.py -q "query"      one-shot (search / convert / reverse ...)
   python3 chessx.py --selftest      offline smoke test of every package
+  python3 chessx.py agent <cmd>     Agent Factory (create/new/list/run/types/gen-type...; see docs/AGENT_FACTORY.md)
 Flags: --lang en|pt|ja  --no-boot  --mute  --json
 The previous v0.5 single-file version is kept as chessx_v05_legacy.py.
 """
@@ -152,6 +153,10 @@ def selftest():
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] in ("agent", "agents"):
+        from chessx_libs.agents.cli import main as agent_main
+        return agent_main(argv[1:])
     ap = argparse.ArgumentParser(prog="chessx")
     ap.add_argument("-q", "--query")
     ap.add_argument("--lang", default="en")
