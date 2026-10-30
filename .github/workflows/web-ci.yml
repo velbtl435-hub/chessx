@@ -7,6 +7,8 @@ on:
     branches: [main]
     paths: ["web/**", ".github/workflows/web-ci.yml"]
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,10 +33,21 @@ jobs:
       - name: Skip if no Vercel token (Git integration handles deploys)
         if: env.VERCEL_TOKEN == ''
         run: echo "VERCEL_TOKEN secret not set - skipping CLI deploy."
+      - name: Install pinned Vercel CLI (checksum-verified)
+        if: env.VERCEL_TOKEN != ''
+        env:
+          VERCEL_CLI_VERSION: "65.8.0"
+          VERCEL_CLI_SHA1: "395da13630d0eb971fd78a440b2139e21edc60a7"
+        run: |
+          cd "$RUNNER_TEMP"
+          npm pack "vercel@${VERCEL_CLI_VERSION}" --silent
+          echo "${VERCEL_CLI_SHA1}  vercel-${VERCEL_CLI_VERSION}.tgz" | sha1sum -c -
+          npm install -g "./vercel-${VERCEL_CLI_VERSION}.tgz"
+          vercel --version
       - name: Deploy to Vercel (prod)
         if: env.VERCEL_TOKEN != ''
         working-directory: web
         run: |
-          npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx vercel@latest build --prod --token="$VERCEL_TOKEN"
-          npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
