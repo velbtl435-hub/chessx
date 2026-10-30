@@ -307,3 +307,137 @@ def test_pyc_size_cap(monkeypatch, good_pyc):
     monkeypatch.setattr(d, "PYC_MAX_BYTES", 32)
     with pytest.raises(rv.PycError, match="too large"):
         rv.disasm_pyc(str(good_pyc))
+
+
+# --- #24 program reversal -----------------------------------------------------
+import struct as _struct
+
+
+def _gcc(tmp_path, src="int main(){char b[64];return b[0];}", flags=None):
+    flags = flags or ["-O2", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2", "-Wl,-z,relro"]
+    c = tmp_path / "t.c"; c.write_text(src); out = tmp_path / "t"
+    subprocess.check_call(["gcc", *flags, "-o", str(out), str(c)], stderr=subprocess.DEVNULL)
+    return str(out)
+
+
+def test_reversal_summary_appended_last_key():
+    r = rv.investigate("/bin/ls")
+    keys = list(r.keys())
+    assert keys[-1] == "reversal_summary"
+    assert "provenance" in keys and keys.index("provenance") < keys.index("reversal_summary")
+    rs = r["reversal_summary"]
+    assert rs["narrative_pt"] and rs["confidence"] >= 0
+    assert rs["build_settings"]["format"] == "ELF"
+    assert rs["build_settings"]["pie"] is True
+    assert rs["build_settings"]["nx"] is True
+    assert rs["toolchain"]["runtime"] in ("glibc", "musl", None) or rs["toolchain"]["runtime"]
+
+
+def test_reversal_gcc_unstripped_and_stripped(tmp_path):
+    p = _gcc(tmp_path)
+    rs = rv.reversal_summary(p)
+    assert rs["toolchain"]["compiler"] == "GCC"
+    assert "gcc" in rs["toolchain"]["versions"]
+    assert rs["build_settings"]["pie"] is True
+    assert rs["build_settings"]["nx"] is True
+    assert rs["build_settings"]["stack_canary"] is True
+    # stripped
+    subprocess.check_call(["strip", p])
+    rs2 = rv.reversal_summary(p)
+    assert rs2["build_settings"]["stripped"] is True
+    assert rs2["toolchain"]["compiler"] == "GCC"  # .comment survives strip
+
+
+def test_reversal_gcc_static(tmp_path):
+    try:
+        p = _gcc(tmp_path, flags=["-static", "-O1"])
+    except subprocess.CalledProcessError:
+        pytest.skip("static libc not available")
+    rs = rv.reversal_summary(p)
+    assert rs["build_settings"]["static"] is True
+    assert rs["toolchain"]["compiler"] == "GCC"
+
+
+@pytest.mark.skipif(not shutil.which("go"), reason="go missing")
+def test_reversal_go_buildinfo(tmp_path):
+    src = tmp_path / "m.go"; src.write_text("package main\nfunc main(){}\n")
+    out = tmp_path / "m"
+    subprocess.check_call(["go", "build", "-o", str(out), str(src)], cwd=str(tmp_path))
+    rs = rv.reversal_summary(str(out))
+    assert rs["toolchain"]["language"] == "Go"
+    assert rs["toolchain"]["versions"].get("go", "").startswith("go1.") or rs["toolchain"]["go_buildinfo"]
+
+
+@pytest.mark.skipif(not shutil.which("rustc"), reason="rustc missing")
+def test_reversal_rust(tmp_path):
+    src = tmp_path / "m.rs"; src.write_text("fn main(){}\n")
+    out = tmp_path / "m"
+    subprocess.check_call(["rustc", "-O", "-o", str(out), str(src)])
+    rs = rv.reversal_summary(str(out))
+    assert rs["toolchain"]["language"] == "Rust"
+
+
+def _hand_pe_with_rich():
+    """Minimal PE + fabricated Rich header (DanS/Rich) for decoder unit test."""
+    # DOS stub
+    dos = bytearray(0x80)
+    dos[0:2] = b"MZ"; _struct.pack_into("<I", dos, 0x3C, 0x80)
+    key = 0xA1B2C3D4
+    dans = 0x536E6144
+    rich_blob = bytearray()
+    for w in (dans, 0, 0, 0):
+        rich_blob += _struct.pack("<I", w ^ key)
+    # one Linker1400 (0xC9) build 29910 count 1
+    rich_blob += _struct.pack("<I", ((0xC9 << 16) | 29910) ^ key)
+    rich_blob += _struct.pack("<I", 1 ^ key)
+    rich_blob += b"Rich" + _struct.pack("<I", key)
+    # pad to 0x80
+    pad = 0x80 - 0x40 - len(rich_blob)
+    body = bytes(dos[:0x40]) + bytes(rich_blob) + (b"\x00" * max(0, pad))
+    body = body[:0x80]
+    # PE header
+    pe = bytearray(0x200)
+    pe[0:4] = b"PE\x00\x00"
+    _struct.pack_into("<HHIIIHH", pe, 4, 0x14C, 1, 0, 0, 0, 0xE0, 0x0102)  # chars
+    _struct.pack_into("<H", pe, 24, 0x10B)  # PE32 magic
+    _struct.pack_into("<BB", pe, 26, 14, 16)  # linker 14.16
+    _struct.pack_into("<I", pe, 24 + 16, 0x1000)  # entry
+    _struct.pack_into("<I", pe, 24 + 28, 0x400000)  # image base
+    _struct.pack_into("<H", pe, 24 + 70, 0x0140)  # NX|DYNAMIC_BASE
+    # one section
+    so = 24 + 0xE0
+    pe[so:so + 8] = b".text\x00\x00\x00"
+    _struct.pack_into("<IIII", pe, so + 8, 0x100, 0x1000, 0x100, 0x200)
+    return bytes(body) + bytes(pe) + b"\x00" * 0x100
+
+
+def test_pe_rich_and_hardening():
+    data = _hand_pe_with_rich()
+    rich = rv.parse_pe_rich(data) if hasattr(rv, "parse_pe_rich") else __import__("chessx_libs.reversing.formats", fromlist=["parse_pe_rich"]).parse_pe_rich(data)
+    assert rich.get("present")
+    assert rich["linker"]["product"] == "Linker1400"
+    assert rich["linker"]["build"] == 29910
+    hdr = rv.parse_pe(data)
+    assert hdr.get("linker_version") == "14.16"
+    assert hdr.get("dll_characteristics", 0) & 0x100  # NX
+    rs = rv.reversal_summary("/dev/null", data=data, hdr=hdr)
+    assert rs["toolchain"]["compiler"] == "MSVC"
+    assert rs["build_settings"]["nx"] is True
+    assert rs["build_settings"]["pie"] is True
+
+
+def test_reversal_graceful_without_extras(monkeypatch, tmp_path):
+    p = _gcc(tmp_path)
+    import chessx_libs.reversing.disasm as d
+    monkeypatch.setattr(d, "_have_r2", lambda: False)
+    rs = rv.investigate(p, use_angr=False)["reversal_summary"]
+    assert rs["narrative_pt"]
+    assert rs["toolchain"]["compiler"] == "GCC"
+    assert "error" not in rs
+
+
+def test_reversal_stdlib_only_path(tmp_path):
+    """Even a random blob yields a summary (low confidence), never raises."""
+    p = tmp_path / "x.bin"; p.write_bytes(b"\x00" * 64 + b"hello")
+    rs = rv.reversal_summary(str(p))
+    assert "narrative_pt" in rs and rs["confidence"] >= 0

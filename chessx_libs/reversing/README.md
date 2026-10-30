@@ -52,3 +52,20 @@ relatorio = investigate("amostra.bin")
 tamanho máx. 16 MiB, payload tipo código) e faz o `marshal` num **subprocesso isolado** (`python -I -S`,
 limite de memória, timeout de 10 s). O objeto de código **nunca é executado**. Falha/crash/timeout →
 `PycError` (subclasse de `ValueError`) com mensagem clara, sem derrubar o processo principal.
+
+## Reversão de programa (#24 / master §14.2)
+`reversal_summary` (chave **nova, sempre por último** em `investigate()`) reconstrói como o binário
+foi construído — **somente estático**:
+
+| Campo | Conteúdo |
+|---|---|
+| `build_settings` | PIE, RELRO, NX, canary, FORTIFY, stripped, static/dynamic, debug |
+| `toolchain` | linguagem/compilador/linker/runtime + versões (Go buildinfo, rustc, GCC/clang `.comment`, Rich MSVC, PE linker, PyInstaller/Nuitka/.NET) |
+| `capabilities` | bibliotecas + grupos (network/crypto/process/file/…) e delay-load PE |
+| `packing` | reutiliza o veredito de `provenance` |
+| `cfg` | contagem/funções maiores/entry→main quando r2 ou angr existem (senão conf baixa) |
+| `narrative_pt` | parágrafo em português |
+| `confidence` / `evidence` | notas por campo |
+
+Fallback stdlib: sem r2/capstone/angr o resumo ainda sai (headers + strings + `.comment`/Rich).
+CLI: seção `--- Reversão (#24) ---` no modo texto.
