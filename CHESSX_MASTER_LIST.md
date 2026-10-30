@@ -1,5 +1,5 @@
 # ChessX - Master Task List & Analysis
-# Version 0.5.5 | Updated 10/30/2026
+# Version 0.5.6 | Updated 10/30/2026
 
 ---
 
@@ -28,6 +28,7 @@
 | A | Draw math symbols in terminal → equation interpretation | Unique interactive feature |
 | A | Defensive cybersecurity suite (containment, malware analysis, firewalls) | Trust and system protection |
 | A | ASCII-art browser mode (colored square tiles + alt views) | Unique terminal navigation |
+| A | Opt-in local wellbeing mode + help-line support (gentle, non-judging, deletable) | Life protection |
 | B | Charts (pie, bar, all types) | Rich visual but complex |
 | B | Text analysis | Content intelligence |
 | B | Text/file generation (open + closed formats) | Productivity |
@@ -39,7 +40,6 @@
 | B | DNS and proxy (incl. DoH/DoT) | Network privacy |
 | B | Defensive bypass (authorized self-protection testing only) | Harden own defenses |
 | B | Cookie hygiene and analysis | Browser privacy |
-| B | Opt-in local wellbeing mode (gentle, non-judging, deletable) | Care without surveillance |
 | B | Information cross-referencing | Differentiating feature |
 | B | Introductory explanatory text | Onboarding |
 | B | ASCII art + pixel art + retro fonts | Strong aesthetics |
@@ -156,7 +156,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 - ChessX is one tool within Artware
 - User: SuperGrok, borrowed ChatGPT, GitHub velbtl435-hub
 - Start date: 10/30/2026
-- Repo: github.com/velbtl435-hub/chessx (commit 425f9358)
+- Repo: github.com/velbtl435-hub/chessx (commit 0be14acc)
 
 ---
 
@@ -227,7 +227,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Defensive bypass (own protection only) | Idea — B, ethics-gated |
 | Cookie hygiene | Idea — B |
 | ASCII browser mode | Idea — A candidate |
-| Wellbeing analysis mode (opt-in, local-only) | Idea — B |
+| Wellbeing mode + help-line support (opt-in, local-only) | Idea — A (life protection) |
 
 ---
 
@@ -408,5 +408,24 @@ Explicit framing: **protection of ChessX and the user's own systems only**. Not 
 - **Opt-in**, off by default
 - No data to studies, telemetry, or third parties — full privacy
 
-### 21.3 Rank
-- Class B
+### 21.3 Help-line support (expansion)
+- If the system detects signs the person may need psychological help, or is facing depression or problems like domestic violence, ChessX helps them reach help lines
+- It first tries to calm the person with gentle, supportive messages, before any action
+- It never replaces a professional; it only supports and points to help
+- Help-line numbers are configurable by region, with a fallback to a local search
+  - Brazil examples: CVV 188 (emotional support and suicide prevention), 180 (Central de Atendimento à Mulher, violence against women), 190 (police), 192 (SAMU, medical emergency)
+- Everything stays opt-in, local, deletable, with no telemetry
+
+### 21.4 Common life problems covered (with due precautions)
+- Depression
+- Anxiety
+- Crisis
+- Grief
+- Domestic violence
+- Abuse
+- Addiction
+- Suicidal thoughts
+- Extreme loneliness
+
+### 21.5 Rank
+- Class A (life protection)
