@@ -1,0 +1,117 @@
+{
+"results": [
+{
+"canonical": {
+"task": {
+"url": "example.com"
+},
+"page": {
+"url": "example.com"
+}
+},
+"task": {
+"visibility": "public",
+"method": "manual",
+"domain": "example.com",
+"apexDomain": "example.com",
+"time": "2026-10-30T14:24:22.017Z",
+"uuid": "01a18d32-74c5-710b-b7d4-f1da6675d367",
+"url": "https://example.com/"
+},
+"stats": {
+"uniqIPs": 1,
+"uniqCountries": 1,
+"dataLength": 2540,
+"encodedDataLength": 2148,
+"requests": 2
+},
+"page": {
+"server": "cloudflare",
+"ip": "172.66.147.243",
+"apexDomainAgeDays": 4340,
+"mimeType": "text/html",
+"title": "Example Domain",
+"url": "https://example.com/",
+"tlsValidDays": 90,
+"tlsAgeDays": 33,
+"domainAgeDays": 4340,
+"tlsValidFrom": "2026-09-26T22:49:11.000Z",
+"domain": "example.com",
+"umbrellaRank": 4648,
+"apexDomain": "example.com",
+"asnname": "CLOUDFLARENET - Cloudflare, Inc., US",
+"asn": "AS13335",
+"tlsIssuer": "Cloudflare TLS Issuing ECC CA 3",
+"status": "200"
+},
+"labels": [],
+"_id": "01a18d32-74c5-710b-b7d4-f1da6675d367",
+"_score": null,
+"sort": [
+1793370262017,
+"01a18d32-74c5-710b-b7d4-f1da6675d367"
+],
+"result": "https://urlscan.io/api/v1/result/01a18d32-74c5-710b-b7d4-f1da6675d367/",
+"screenshot": "https://urlscan.io/screenshots/01a18d32-74c5-710b-b7d4-f1da6675d367.png"
+},
+{
+"submitter": {},
+"canonical": {
+"task": {
+"url": "example.com"
+},
+"page": {
+"url": "example.com"
+}
+},
+"task": {
+"visibility": "public",
+"method": "api",
+"domain": "example.com",
+"apexDomain": "example.com",
+"time": "2026-10-30T14:20:08.771Z",
+"uuid": "01a18d2e-989f-73af-9810-b4a7ea5bc83e",
+"url": "https://example.com/"
+},
+"stats": {
+"uniqIPs": 1,
+"uniqCountries": 1,
+"dataLength": 2540,
+"encodedDataLength": 2146,
+"requests": 2
+},
+"page": {
+"server": "cloudflare",
+"ip": "104.20.23.154",
+"apexDomainAgeDays": 4340,
+"mimeType": "text/html",
+"title": "Example Domain",
+"url": "https://example.com/",
+"tlsValidDays": 90,
+"tlsAgeDays": 33,
+"domainAgeDays": 4340,
+"tlsValidFrom": "2026-09-26T22:49:11.000Z",
+"domain": "example.com",
+"umbrellaRank": 4648,
+"apexDomain": "example.com",
+"asnname": "CLOUDFLARENET - Cloudflare, Inc., US",
+"asn": "AS13335",
+"tlsIssuer": "Cloudflare TLS Issuing ECC CA 3",
+"status": "200"
+},
+"labels": [],
+"_id": "01a18d2e-989f-73af-9810-b4a7ea5bc83e",
+"_score": null,
+"sort": [
+1793370008771,
+"01a18d2e-989f-73af-9810-b4a7ea5bc83e"
+],
+"result": "https://urlscan.io/api/v1/result/01a18d2e-989f-73af-9810-b4a7ea5bc83e/",
+"screenshot": "https://urlscan.io/screenshots/01a18d2e-989f-73af-9810-b4a7ea5bc83e.png"
+}
+],
+"total": 7069,
+"took": 1781,
+"has_more": false,
+"search_date_limit_days": 30
+}

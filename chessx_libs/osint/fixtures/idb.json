@@ -1,0 +1,16 @@
+{
+"cpes": [],
+"hostnames": [
+"flowlink-dashboard.cicd-experience.devtest.gf.aws.scania.com",
+"dns.google"
+],
+"ip": "8.8.8.8",
+"ports": [
+53,
+443
+],
+"tags": [
+"pqc"
+],
+"vulns": []
+}

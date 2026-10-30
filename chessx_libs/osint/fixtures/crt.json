@@ -1,0 +1,1 @@
+[{"name_value": "www.example.com\nexample.com", "not_before": "2024-01-01T00:00:00"}, {"name_value": "*.dev.example.com", "not_before": "2023-05-01T00:00:00"}, {"name_value": "evil.com", "not_before": "2023-01-01T00:00:00"}, {"name_value": "www.example.com", "not_before": "2020-02-02T00:00:00"}]
