@@ -61,3 +61,15 @@ def indicators(data) -> dict:
 def strings_from_file(path: str, min_len: int = 4):
     with open(path, "rb") as fh:
         return extract_strings(fh.read(), min_len)
+
+
+def strings_with_offsets(data, min_len: int = 4, utf16: bool = True, limit: int = 0):
+    """Like `strings -t x`: list of {offset, encoding, value}, sorted by offset."""
+    data = _b(data)
+    out = [{"offset": m.start(), "encoding": "ascii", "value": m.group().decode("ascii")}
+           for m in _printable_re(min_len).finditer(data)]
+    if utf16:
+        out += [{"offset": m.start(), "encoding": "utf-16le", "value": m.group().decode("utf-16-le")}
+                for m in _utf16_re(min_len).finditer(data)]
+    out.sort(key=lambda d: d["offset"])
+    return out[:limit] if limit else out

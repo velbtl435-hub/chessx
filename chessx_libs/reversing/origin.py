@@ -13,11 +13,25 @@ SIGNATURES = [
 ]
 
 
+BYTE_MARKERS = [
+    (b"UPX!", "UPX packer"), (b"UPX0", "UPX packer"), (b"\xff Go buildinf:", "Go"), (b"Go build ID:", "Go"),
+    (b"MEI\x0c\x0b\x0a\x0b\x0e", "PyInstaller"), (b"pyi-runtime-tmpdir", "PyInstaller"),
+    (b"/rustc/", "Rust"), (b"RUST_BACKTRACE", "Rust"), (b"Rich", None),
+]
+
+
 def origin_hints(data: bytes) -> list:
     text = "\n".join(extract_strings(data, 4))
     hits = []
+    for marker, name in BYTE_MARKERS:
+        if name and marker in data:
+            hits.append({"toolchain": name, "evidence": f"byte marker {marker!r} @0x{data.find(marker):x}"})
     for pat, name in SIGNATURES:
         m = re.search(pat, text, re.I)
         if m:
             hits.append({"toolchain": name, "evidence": m.group(0)[:80]})
-    return hits
+    seen, uniq = set(), []
+    for h in hits:  # one hint per toolchain (first evidence wins)
+        if h["toolchain"] not in seen:
+            seen.add(h["toolchain"]); uniq.append(h)
+    return uniq
