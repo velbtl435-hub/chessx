@@ -10,3 +10,5 @@ py-tlsh>=4.7           # TLSH locality-sensitive hashing
 # crypto: 2FA QR + OS keyring
 qrcode[pil]>=7.4
 keyring>=24
+# reversing: optional YARA for triage
+yara-python>=4.3
