@@ -1,5 +1,5 @@
 # ChessX - Master Task List & Analysis
-# Version 0.5.6 | Updated 10/30/2026
+# Version 0.5.7 | Updated 10/30/2026
 
 ---
 
@@ -29,6 +29,7 @@
 | A | Defensive cybersecurity suite (containment, malware analysis, firewalls) | Trust and system protection |
 | A | ASCII-art browser mode (colored square tiles + alt views) | Unique terminal navigation |
 | A | Opt-in local wellbeing mode + help-line support (gentle, non-judging, deletable) | Life protection |
+| A | Multi-agent system (independent agents, schedules, internal messaging) | Architecture differentiator |
 | B | Charts (pie, bar, all types) | Rich visual but complex |
 | B | Text analysis | Content intelligence |
 | B | Text/file generation (open + closed formats) | Productivity |
@@ -156,7 +157,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 - ChessX is one tool within Artware
 - User: SuperGrok, borrowed ChatGPT, GitHub velbtl435-hub
 - Start date: 10/30/2026
-- Repo: github.com/velbtl435-hub/chessx (commit 0be14acc)
+- Repo: github.com/velbtl435-hub/chessx (commit aad18054)
 
 ---
 
@@ -228,6 +229,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Cookie hygiene | Idea — B |
 | ASCII browser mode | Idea — A candidate |
 | Wellbeing mode + help-line support (opt-in, local-only) | Idea — A (life protection) |
+| Multi-agent system | Idea — A |
 
 ---
 
@@ -429,3 +431,30 @@ Explicit framing: **protection of ChessX and the user's own systems only**. Not 
 
 ### 21.5 Rank
 - Class A (life protection)
+
+---
+
+## 22. AGENT SYSTEM (USER REQUEST 10/30/2026)
+
+### 22.1 Concept
+- Multiple AIs/bots working on the same ChessX tool, each with a different role
+- Each agent is a simple, independent script/code/AI
+- Agents can run research independently of each other
+
+### 22.2 Scheduling
+- Agents can be programmed with scheduled activities: per second, minute, hour, day, month and year
+
+### 22.3 Communication and control
+- Agents talk to each other through internal messages
+- Each agent has its own log
+- Each agent can be turned on/off individually
+
+### 22.4 Example agents
+- Researcher
+- Code analyst
+- Security monitor
+- Media collector
+- Translator
+
+### 22.5 Rank
+- Class A (ChessX's architecture differentiator)
