@@ -7,31 +7,45 @@ on:
     paths: ["c/**", "chessx_libs/native/**", "tests/test_native.py", ".github/workflows/c-wasm.yml"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   WASI_SDK_VERSION: "34"
   WASMTIME_VERSION: "50.0.1"
   WASMER_VERSION: "7.5.0"
+  # SHA-256 of the pinned release assets (match the GitHub release asset digests).
+  WASI_SDK_SHA256: "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4"
+  WASMTIME_SHA256: "685466455dd42a14774a86c36c8f2e45cbb9bd6d92a850139315df60a75498a5"
+  WASMER_SHA256: "23f99818deaad93859f8bb8292af81f0c39f25aea19eaccfb72fc7c9e8a3fae9"
 
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.12" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: { node-version: 22 }
       - name: Install wasi-sdk
         run: |
-          curl -sSLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz
+          curl -fsSLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz
+          echo "${WASI_SDK_SHA256}  wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz" | sha256sum -c -
           sudo tar xzf wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux.tar.gz -C /opt
           sudo ln -sfn /opt/wasi-sdk-${WASI_SDK_VERSION}.0-x86_64-linux /opt/wasi-sdk
           /opt/wasi-sdk/bin/clang --version
       - name: Install wasmtime + wasmer
         run: |
-          curl -sSL https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz | tar xJ
+          curl -fsSLO https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz
+          echo "${WASMTIME_SHA256}  wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" | sha256sum -c -
+          tar xJf wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz
           sudo cp wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime /usr/local/bin/
-          mkdir wm && curl -sSL https://github.com/wasmerio/wasmer/releases/download/v${WASMER_VERSION}/wasmer-linux-amd64.tar.gz | tar xz -C wm
+          curl -fsSLO https://github.com/wasmerio/wasmer/releases/download/v${WASMER_VERSION}/wasmer-linux-amd64.tar.gz
+          echo "${WASMER_SHA256}  wasmer-linux-amd64.tar.gz" | sha256sum -c -
+          mkdir wm && tar xzf wasmer-linux-amd64.tar.gz -C wm
           sudo cp wm/bin/wasmer /usr/local/bin/
           wasmtime --version && wasmer --version
       - name: Capstone parity reference (pip capstone)
@@ -44,11 +58,11 @@ jobs:
         run: python -m unittest tests.test_native -v
       - name: Browser WASI shim check (Node)
         run: |
-          mkdir -p /tmp/js && cd /tmp/js && npm init -y >/dev/null && npm i @bjorn3/browser_wasi_shim@0.4
+          mkdir -p /tmp/js && cd /tmp/js && npm init -y >/dev/null && npm i --ignore-scripts @bjorn3/browser_wasi_shim@0.4.2
           cp "$GITHUB_WORKSPACE/c/tests/js_shim_test.mjs" . && node js_shim_test.mjs "$GITHUB_WORKSPACE/c/build/wasm/hello_fusion.reactor.wasm"
       - name: Size report
         run: make -C c size
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chessx-wasm
           path: c/build/wasm/*.wasm
@@ -56,6 +70,8 @@ jobs:
 
   native-macos:
     runs-on: macos-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: make -C c -j"$(sysctl -n hw.ncpu)" native CC=clang && python3 -m unittest tests.test_native -v
