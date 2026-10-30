@@ -30,6 +30,15 @@ def main(argv=None) -> int:
               f"funções={d.get('function_count')} imports={len(d.get('imports', []))}")
         for line in d.get("entry_disasm", [])[:8]:
             print("   " + line)
+    pv = r.get("provenance") or {}
+    if pv:
+        print("Toolchain: " + (", ".join(f"{f['toolchain']}({f['confidence']})" for f in pv["fingerprint"]) or "-"))
+        print(f"Empacotado: {'sim' if pv['packing']['likely_packed'] else 'não'} {pv['packing']['reasons'][:2]}")
+        meta = {k: v for k, v in pv["metadata"].items() if v}
+        if meta:
+            print(f"Metadados: {meta}")
+        if pv["embedded"]:
+            print(f"Embutidos: {[(hex(e['offset']), e['type']) for e in pv['embedded'][:5]]}")
     print(f"Strings : {r['strings']['count']}  URLs={len(r['indicators']['urls'])}")
     return 0
 

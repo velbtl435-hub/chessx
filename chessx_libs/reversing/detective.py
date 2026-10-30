@@ -33,7 +33,8 @@ def optional_backends() -> dict:
     return mods
 
 
-def investigate(path: str, min_str: int = 5, max_strings: int = 200, use_angr: bool = False) -> dict:
+def investigate(path: str, min_str: int = 5, max_strings: int = 200, use_angr: bool = False,
+                expanded: bool = True) -> dict:
     """Run every analysis step and return one JSON-serializable report."""
     from .detector import detect
     from .formats import parse_headers
@@ -59,4 +60,11 @@ def investigate(path: str, min_str: int = 5, max_strings: int = 200, use_angr: b
             report["cfg"] = cfg_summary(path)
         except Exception as exc:
             report["errors"].append(f"angr: {exc}")
+    if expanded:  # #11 expanded detective mode
+        from .provenance import provenance
+        funcs = list(report.get("disasm", {}).get("functions", [])) + list(report.get("cfg", {}).get("functions", []))  # r2 + angr names
+        try:
+            report["provenance"] = provenance(path, funcs)
+        except Exception as exc:
+            report["errors"].append(f"provenance: {exc}")
     return report

@@ -9,3 +9,6 @@ from .detective import file_info, investigate, optional_backends
 from .formats import parse_headers, parse_elf, parse_pe, parse_macho
 from .angr_helper import cfg_summary, reachable, HAVE_ANGR
 __all__ = [n for n in dir() if not n.startswith("_")]
+from .provenance import provenance, hashes, fingerprint, section_entropy, embedded_resources, pe_version_info
+from .formats import parse_pe_imports, imphash
+__all__ = [n for n in dir() if not n.startswith("_")]
