@@ -46,3 +46,9 @@ relatorio = investigate("amostra.bin")
 - **Fingerprint de toolchain em binários stripped:** nomes de seção, padrões de bytes, imports e nomes de
   função do radare2/angr (Go, Rust, GCC, Clang, MSVC, MinGW, PyInstaller, Nuitka, Nim, Zig, Swift, .NET…), com pontuação.
 - `investigate(path)` inclui `report["provenance"]` (desative com `expanded=False`); `--angr` alimenta o fingerprint.
+
+## Segurança: `.pyc` não confiável (auditoria CRYPTO_AUDIT #7)
+`disasm_pyc()` é **somente estático**: valida o cabeçalho PEP 552 (magic igual ao do Python atual, flags,
+tamanho máx. 16 MiB, payload tipo código) e faz o `marshal` num **subprocesso isolado** (`python -I -S`,
+limite de memória, timeout de 10 s). O objeto de código **nunca é executado**. Falha/crash/timeout →
+`PycError` (subclasse de `ValueError`) com mensagem clara, sem derrubar o processo principal.

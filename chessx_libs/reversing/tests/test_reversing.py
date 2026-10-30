@@ -243,3 +243,67 @@ def test_investigate_includes_provenance_json():
     json.dumps(r)
     assert r["provenance"]["hashes"]["sha256"] == r["file"]["sha256"]
     assert "provenance" not in rv.investigate("/bin/ls", expanded=False)
+
+
+# --- .pyc hardening (CRYPTO_AUDIT #7) ------------------------------------------
+import importlib.util as _ilu, marshal as _marshal, py_compile as _pyc
+
+
+@pytest.fixture
+def good_pyc(tmp_path):
+    src = tmp_path / "m.py"; src.write_text("import os\nos.system('touch PWNED')\ndef f(x):\n    return x + 1\n")
+    out = tmp_path / "m.pyc"; _pyc.compile(str(src), cfile=str(out), doraise=True)
+    return out
+
+
+def test_pyc_valid_static_only(good_pyc, tmp_path):
+    txt = rv.disasm_pyc(str(good_pyc))
+    assert "LOAD_CONST" in txt or "RESUME" in txt
+    assert not (tmp_path / "PWNED").exists() and not os.path.exists("PWNED")  # never executed
+
+
+@pytest.mark.parametrize("blob,msg", [
+    (b"", "truncated"), (b"\x00" * 10, "truncated"),
+    (b"\xde\xad\xbe\xef" + bytes(20), "magic"),
+    (_ilu.MAGIC_NUMBER + (8).to_bytes(4, "little") + bytes(12), "flags"),
+    (_ilu.MAGIC_NUMBER + bytes(12) + b"\x69\x01\x00\x00\x00", "not a marshalled code"),
+])
+def test_pyc_header_rejections(tmp_path, blob, msg):
+    p = tmp_path / "bad.pyc"; p.write_bytes(blob)
+    with pytest.raises(rv.PycError, match=msg):
+        rv.disasm_pyc(str(p))
+
+
+def test_pyc_garbage_payload_is_clean_error(good_pyc, tmp_path):
+    data = good_pyc.read_bytes()
+    for i, body in enumerate([data[16:40], b"c" + os.urandom(4000), b"\xe3" + b"\xff" * 64]):
+        p = tmp_path / f"g{i}.pyc"; p.write_bytes(data[:16] + body)
+        with pytest.raises(rv.PycError, match="isolated .pyc loader"):
+            rv.disasm_pyc(str(p))
+
+
+def test_pyc_not_code_object(tmp_path, good_pyc):
+    p = tmp_path / "t.pyc"; p.write_bytes(good_pyc.read_bytes()[:16] + b"\xe3" + _marshal.dumps(1)[1:])
+    with pytest.raises(rv.PycError):
+        rv.disasm_pyc(str(p))
+
+
+def test_pyc_timeout(monkeypatch, good_pyc):
+    from chessx_libs.reversing import disasm as d
+    monkeypatch.setattr(d, "_PYC_CHILD", "import time; time.sleep(5)")
+    with pytest.raises(rv.PycError, match="timed out"):
+        rv.disasm_pyc(str(good_pyc), timeout=0.5)
+
+
+def test_pyc_child_crash_reported(monkeypatch, good_pyc):
+    from chessx_libs.reversing import disasm as d
+    monkeypatch.setattr(d, "_PYC_CHILD", "import os, signal; os.kill(os.getpid(), signal.SIGSEGV)")
+    with pytest.raises(rv.PycError, match="signal"):
+        rv.disasm_pyc(str(good_pyc))
+
+
+def test_pyc_size_cap(monkeypatch, good_pyc):
+    from chessx_libs.reversing import disasm as d
+    monkeypatch.setattr(d, "PYC_MAX_BYTES", 32)
+    with pytest.raises(rv.PycError, match="too large"):
+        rv.disasm_pyc(str(good_pyc))

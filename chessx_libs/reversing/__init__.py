@@ -3,7 +3,7 @@ from .strings import (extract_strings, extract_quoted, extract_urls, extract_ema
                       indicators, strings_from_file, strings_with_offsets, QUOTED_RE, URL_RE, EMAIL_RE)
 from .detector import detect, detect_file, entropy
 from .origin import origin_hints
-from .disasm import disasm_python, disasm_pyc, disasm_x86, analyze_binary
+from .disasm import disasm_python, disasm_pyc, disasm_x86, analyze_binary, PycError, check_pyc_header
 from .baseconv import convert, to_base, hexdump, bindump
 from .detective import file_info, investigate, optional_backends
 from .formats import parse_headers, parse_elf, parse_pe, parse_macho

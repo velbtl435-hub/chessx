@@ -1,10 +1,12 @@
 """Disassembly helpers.
 
 - Python: real disassembly via stdlib `dis` (source, code objects, .pyc files).
+  .pyc input is untrusted: header-validated, unmarshalled in an isolated subprocess,
+  and NEVER executed (static only).
 - x86-64: tiny table-driven decoder for common one/two-byte opcodes (educational;
   for full coverage install `capstone` -- optional, auto-used if present).
 """
-import dis, io, marshal
+import dis, importlib.util, io, os, subprocess, sys
 
 X86 = {0x90: "nop", 0xC3: "ret", 0xCC: "int3", 0x55: "push rbp", 0x5D: "pop rbp", 0xC9: "leave",
        0x50: "push rax", 0x53: "push rbx", 0x58: "pop rax", 0x5B: "pop rbx", 0xF4: "hlt", 0x99: "cdq"}
@@ -18,10 +20,73 @@ def disasm_python(obj) -> str:
     return buf.getvalue()
 
 
-def disasm_pyc(path: str) -> str:
+class PycError(ValueError):
+    """Raised when a .pyc is rejected (bad header/size) or the isolated loader crashes/times out."""
+
+
+PYC_MAX_BYTES = 16 * 1024 * 1024
+PYC_TIMEOUT = 10.0
+PYC_MEM_LIMIT = 512 * 1024 * 1024
+
+# Runs in a separate `python -I` process. It ONLY unmarshals and disassembles:
+# the code object is never executed (no exec/eval, no import of the sample).
+_PYC_CHILD = r"""
+import sys, marshal, dis, io
+try:
+    import resource
+    lim = int(sys.argv[1])
+    resource.setrlimit(resource.RLIMIT_AS, (lim, lim))
+except Exception:
+    pass
+data = sys.stdin.buffer.read()
+co = marshal.loads(data)
+if type(co).__name__ != "code":
+    sys.stderr.write("not a code object: " + type(co).__name__); sys.exit(3)
+buf = io.StringIO(); dis.dis(co, file=buf); sys.stdout.write(buf.getvalue())
+"""
+
+
+def check_pyc_header(data: bytes) -> dict:
+    """Validate a PEP 552 .pyc header against the running interpreter. Raises PycError."""
+    if len(data) < 17:
+        raise PycError("truncated .pyc (header is 16 bytes plus payload)")
+    if len(data) > PYC_MAX_BYTES:
+        raise PycError(f".pyc too large ({len(data)} > {PYC_MAX_BYTES} bytes)")
+    if data[:4] != importlib.util.MAGIC_NUMBER:
+        raise PycError(f"magic {data[:4].hex()} does not match this Python "
+                       f"({importlib.util.MAGIC_NUMBER.hex()}, {sys.version.split()[0]})")
+    flags = int.from_bytes(data[4:8], "little")
+    if flags & ~0b11:
+        raise PycError(f"invalid .pyc flags 0x{flags:x}")
+    info = {"flags": flags, "hash_based": bool(flags & 1)}
+    if not flags & 1:
+        info["source_mtime"] = int.from_bytes(data[8:12], "little")
+        info["source_size"] = int.from_bytes(data[12:16], "little")
+    if data[16] & 0x7F != ord("c"):  # TYPE_CODE (optionally with FLAG_REF)
+        raise PycError("payload is not a marshalled code object")
+    return info
+
+
+def disasm_pyc(path: str, timeout: float = PYC_TIMEOUT) -> str:
+    """Disassemble a .pyc STATICALLY. The header is validated here; the untrusted
+    marshal payload is decoded in an isolated subprocess (`python -I`, memory-capped,
+    timeout) so a malformed file cannot crash this interpreter. Never executes the code.
+    Raises PycError on rejection, crash or timeout."""
+    if os.path.getsize(path) > PYC_MAX_BYTES:
+        raise PycError(f".pyc too large (> {PYC_MAX_BYTES} bytes)")
     with open(path, "rb") as fh:
-        fh.read(16)  # header (PEP 552) -- must match running interpreter version
-        return disasm_python(marshal.load(fh))
+        data = fh.read(PYC_MAX_BYTES + 1)
+    check_pyc_header(data)
+    try:
+        r = subprocess.run([sys.executable, "-I", "-S", "-c", _PYC_CHILD, str(PYC_MEM_LIMIT)], input=data[16:],
+                           capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise PycError(f"isolated .pyc loader timed out after {timeout}s") from None
+    if r.returncode != 0:
+        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        how = f"killed by signal {-r.returncode}" if r.returncode < 0 else f"exit {r.returncode}"
+        raise PycError(f"isolated .pyc loader failed ({how}): {err[-1] if err else 'no output'}")
+    return r.stdout.decode("utf-8", "replace")
 
 
 def disasm_x86(code: bytes, base: int = 0, use_capstone: bool = True) -> list:
