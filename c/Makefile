@@ -35,6 +35,8 @@ MODULES := $(patsubst %/,%,$(dir $(patsubst %/src/,%/,$(dir $(wildcard */src/*.c
 MODULES := $(sort $(MODULES))
 COMMON := $(wildcard common/*.c)
 src_of = $(wildcard $(1)/src/*.c) $(COMMON)
+# per-module extra rules (vendored deps, custom flags), e.g. capstone/module.mk
+-include $(wildcard */module.mk)
 
 NATIVE_LIBS := $(foreach m,$(MODULES),$(B)/native/libcx_$(m).$(SOEXT))
 NATIVE_CLIS := $(foreach m,$(MODULES),$(if $(wildcard $(m)/cli.c),$(B)/native/$(m)_cli))

@@ -34,8 +34,10 @@ jobs:
           mkdir wm && curl -sSL https://github.com/wasmerio/wasmer/releases/download/v${WASMER_VERSION}/wasmer-linux-amd64.tar.gz | tar xz -C wm
           sudo cp wm/bin/wasmer /usr/local/bin/
           wasmtime --version && wasmer --version
-      - name: Build native + wasm
-        run: make -C c all
+      - name: Capstone parity reference (pip capstone)
+        run: python -m pip install capstone==5.0.7
+      - name: Build native + wasm (incl. vendored capstone via c/*/module.mk)
+        run: make -C c -j"$(nproc)" all
       - name: Parity (python / ctypes / native CLI / wasmtime / wasmer)
         run: make -C c test
       - name: Python unit tests
@@ -56,4 +58,4 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: make -C c native CC=clang && python3 -m unittest tests.test_native -v
+      - run: make -C c -j"$(sysctl -n hw.ncpu)" native CC=clang && python3 -m unittest tests.test_native -v
