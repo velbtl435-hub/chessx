@@ -214,6 +214,7 @@ def selftest():
         assert len({e.key for e in ENTRIES}) == len(ENTRIES)
         assert availability("definitely_not_a_pkg")[0] is False
     check("menu", menu_check)
+    check("native", lambda: importlib.import_module("chessx_libs.native.hello_fusion").crc32(b"123456789") == 0xCBF43926 or 1 / 0)
     check("mathx", lambda: mathx.dispatch("prof ohm V=12 R=4").startswith("I = V/R") or 1 / 0)
     return ok
 
