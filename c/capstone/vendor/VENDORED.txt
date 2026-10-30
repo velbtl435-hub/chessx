@@ -1,0 +1,1 @@
+capstone 5.0.7 (tag 5.0.7, commit d2e5739cbb43df93d589a3a726c8f878b95beccb), https://github.com/capstone-engine/capstone. Trimmed: core + arch/{X86,ARM,AArch64,Mips,RISCV}; bindings/tests/suite/other archs reduced to their *Module.h headers (needed by cs.c). BSD-3 (LICENSE.TXT) + LLVM (LICENSE_LLVM.TXT).
