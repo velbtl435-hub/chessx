@@ -20,6 +20,51 @@ def py_run(args, crc, fuse):
     raise ValueError(cmd)
 
 
+def search_run(v, ns):
+    cmd, rest = v[0], v[1:]
+    if cmd == "norm":
+        return "[%s]" % ns["norm"](rest[0] if rest else "")
+    if cmd == "rank":
+        return " ".join(map(str, ns["rank"]([int(x) for x in rest])))
+    if cmd == "fuse":
+        items = []
+        for t in rest:
+            e, s, u = t.split(":", 2)
+            items.append((int(e), int(s), u))
+        _, gs, order = ns["fuse"](items)
+        return " ".join("%d:%d" % (g, gs[g]) for g in order)
+    raise ValueError(cmd)
+
+
+def run_search(build, wasmtime):
+    """c/search parity: pure Python (fusion.py semantics) == ctypes == native CLI == wasmtime."""
+    from chessx_libs.native import search as cs
+    assert cs.backend() == "native", "ctypes could not load libcx_search"
+    cli, wasm = os.path.join(build, "native", "search_cli"), os.path.join(build, "wasm", "search.wasm")
+    runners = {"python": lambda v: search_run(v, {"norm": cs.norm_url_py, "rank": cs.rank_py, "fuse": cs.fuse_py}),
+               "ctypes": lambda v: search_run(v, {"norm": cs.norm_url, "rank": cs.rank, "fuse": cs.fuse_indices}),
+               "native-cli": lambda v: subprocess.run([cli] + v, capture_output=True, text=True,
+                                                      check=True).stdout.strip()}
+    if shutil.which(wasmtime):
+        runners["wasmtime"] = lambda v: subprocess.run([wasmtime, "run", wasm] + v, capture_output=True, text=True,
+                                                       check=True).stdout.strip()
+    vectors = []
+    for line in open(os.path.join(C, "search", "vectors.txt"), encoding="utf-8"):
+        line = line.rstrip("\n")
+        if line.strip() and not line.startswith("#"):
+            cmd, _, rest = line.partition(" ")
+            vectors.append([cmd] + ([rest] if cmd == "norm" else rest.split()))
+    fails = 0
+    for v in vectors:
+        outs = {k: f(v) for k, f in runners.items()}
+        same = len(set(outs.values())) == 1
+        fails += not same
+        print("%-4s %-60s %s" % ("ok" if same else "FAIL", " ".join(v)[:60], outs["python"] if same else outs))
+    print("search parity: %d vectors x %d backends (%s): %s" % (len(vectors), len(runners), ",".join(runners),
+                                                                "ALL MATCH" if not fails else "%d FAIL" % fails))
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default=os.path.join(C, "build"))
@@ -61,6 +106,7 @@ def main():
         ok = out.stdout.strip().splitlines()[-1:] == ["1"]
         fails += not ok
         print("%-4s reactor export cx_abi_version() == 1" % ("ok" if ok else "FAIL"))
+    fails += run_search(build, a.wasmtime)
     # known-answer checks
     assert hf.crc32_py(b"123456789") == 0xCBF43926
     import zlib

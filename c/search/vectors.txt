@@ -1,0 +1,26 @@
+# search parity vectors: norm <url> | fuse engine:score_fixed:url ... | rank score ...
+norm https://www.Example.com/a/b/
+norm HTTP://WWW.EXAMPLE.COM
+norm https://example.com/path?q=1&b=2#frag
+norm https://example.com/?
+norm https://example.com/a;params?x=1
+norm https://example.com/a;p/b;x/?q=1
+norm ftp://Host.org/x;type=a
+norm mailto:User@Example.com
+norm example.com/no/scheme/
+norm //www.proto-relative.net/p//
+norm   https://lead.space/x
+norm https://tab	example.com/a
+norm 1http://bad.scheme/x
+norm https://user:pw@WWW.host:8080/p/
+norm https://www.
+norm
+fuse 0:500000000:https://a.com/x 1:900000000:http://www.a.com/x/ 0:700000000:https://b.com 0:800000000:https://b.com/
+fuse 0:2000000000:https://clamp.me 1:-5:https://clamp.me/ 2:300000000:https://other.org
+fuse 0:100:https://t.ie 1:100:https://u.ie 2:100:https://v.ie
+fuse 0:400000000:https://x.io 0:600000000:https://x.io 1:100000000:https://x.io 1:900000000:https://x.io
+fuse 3:1000000000:https://a.b?q=1 3:1000000000:https://a.b?q=2 4:0:https://a.b?q=1#z
+fuse
+rank 5 3 5 9 -1 0
+rank 1 1 1
+rank
