@@ -572,3 +572,29 @@ Name: **TamagóX** — with a capital X, not "chi".
 ### 27.4 Rank
 - Class A
 
+---
+
+## 28. OSINT PLATFORM (USER REQUEST 10/30/2026)
+
+### 28.1 Scope
+- Full OSINT platform inside ChessX with multiple tools and a unified interface
+- Open-source search across engines and public datasets (reuses chessx_libs/search fusion)
+- Profile analysis (usernames across platforms, public profile correlation)
+- Geolocation (image/EXIF clues, IP geolocation, map lookups)
+- WHOIS / RDAP and DNS (records, history, subdomains, reverse lookups)
+- Metadata extraction (images, documents, media; reuses media/ and detective)
+- Leak / breach checks (e.g. Have I Been Pwned-style APIs, k-anonymity where available)
+- Social networks (public posts, accounts, timelines through official/public APIs)
+- Dark web monitoring: READ-ONLY and legal only (public mentions/leak indexes; no purchases, no interaction, no access to illegal content)
+
+### 28.2 Interface
+- One unified OSINT menu/dashboard: case files, targets, findings, timeline, export (JSON/CSV/report)
+- Every finding keeps its source URL and timestamp
+
+### 28.3 Ethics & safety
+- Public/legal sources only; respect robots, rate limits and site terms
+- No stalking/harassment use; audit log of queries; data stays local and deletable
+- Integrates with the anonymity layer (section 18) when the user enables it
+
+### 28.4 Rank
+- Class A
