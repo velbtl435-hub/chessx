@@ -1,0 +1,17 @@
+name: refresh-ping
+# More frequent refresh than Vercel Hobby's daily cron. Needs repo variable CHESSX_URL
+# (e.g. https://chessx-web.vercel.app); secret CRON_SECRET optional. Skips if CHESSX_URL unset.
+on:
+  schedule: [{ cron: "0 */3 * * *" }]
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /api/refresh
+        env:
+          URL: ${{ vars.CHESSX_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$URL" ]; then echo "CHESSX_URL not set - skipping"; exit 0; fi
+          curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$URL/api/refresh"
