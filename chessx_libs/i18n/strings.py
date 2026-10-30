@@ -1,4 +1,4 @@
-"""Translation table: 84 keys x (en, pt, ja)."""
+"""Translation table: 87 keys x (en, pt, ja)."""
 
 STRINGS = {
     "en": {
@@ -86,6 +86,9 @@ STRINGS = {
         'menu_selftest': 'Selftest',
         'menu_browser': 'ASCII browser',
         'menu_pixelart': 'Pixel-art critters',
+        'menu_osint': 'OSINT investigate (public sources)',
+        'menu_retro': 'Retro sounds (chip sfx / music)',
+        'menu_geo': 'Forensic geolocation',
     },
     "pt": {
         'welcome': 'Bem-vindo ao ChessX',
@@ -172,6 +175,9 @@ STRINGS = {
         'menu_selftest': 'Autoteste',
         'menu_browser': 'Navegador ASCII',
         'menu_pixelart': 'Bichinhos em pixel art',
+        'menu_osint': 'Investigação OSINT (fontes públicas)',
+        'menu_retro': 'Sons retrô (efeitos e música de chip)',
+        'menu_geo': 'Geolocalização forense',
     },
     "ja": {
         'welcome': 'ChessXへようこそ',
@@ -258,5 +264,8 @@ STRINGS = {
         'menu_selftest': 'セルフテスト',
         'menu_browser': 'ASCII ブラウザー',
         'menu_pixelart': 'ピクセルアートの生き物',
+        'menu_osint': 'OSINT 調査（公開情報）',
+        'menu_retro': 'レトロサウンド（チップ効果音 / 音楽）',
+        'menu_geo': 'フォレンジック位置特定',
     },
 }
