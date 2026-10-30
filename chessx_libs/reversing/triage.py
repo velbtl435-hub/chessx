@@ -390,6 +390,79 @@ def run_rules(ctx: dict, rules: list) -> list:
     return out
 
 
+# ---------------------------------------------------------------- optional YARA engine (stage D)
+YARA_MAX_BYTES = 32 << 20
+YARA_TIMEOUT = 5
+YARA_MAX_FILES = int(os.environ.get("CHESSX_TRIAGE_YARA_MAX", "500") or 500)
+_SEV_WEIGHT = {"info": 5, "low": 10, "medium": 20, "high": 35, "critical": 50}
+
+
+def _yara_module():
+    try:
+        import yara  # optional: yara-python
+        return yara
+    except Exception:
+        return None
+
+
+def yara_scan(data: bytes, extra=None) -> dict:
+    """Scan bytes with user-provided .yar/.yara files (no includes, no network). Graceful w/o yara."""
+    res = {"available": False, "rules_loaded": 0, "matched": [], "errors": [], "truncated": False, "timed_out": False}
+    yara = _yara_module()
+    if yara is None:
+        return res
+    res["available"] = True
+    files = []
+    for d in rule_dirs(extra):
+        files += _safe_files(d, (".yar", ".yara"))
+    if len(files) > YARA_MAX_FILES:
+        res["errors"].append(f"yara: {len(files)} arquivos > limite {YARA_MAX_FILES}; excedentes ignorados")
+        files = files[:YARA_MAX_FILES]
+    compiled = []
+    for f in files:
+        try:
+            compiled.append((f, yara.compile(filepath=f, includes=False)))
+        except Exception as exc:
+            res["errors"].append(f"yara compile {os.path.basename(f)}: {exc}")
+    res["rules_loaded"] = len(compiled)
+    if not compiled:
+        return res
+    if len(data) > YARA_MAX_BYTES:
+        data, res["truncated"] = data[:YARA_MAX_BYTES], True
+    for f, rules in compiled:
+        try:
+            matches = rules.match(data=data, timeout=YARA_TIMEOUT)
+        except Exception as exc:
+            if "timeout" in str(exc).lower():
+                res["timed_out"] = True
+            res["errors"].append(f"yara match {os.path.basename(f)}: {exc}")
+            continue
+        for m in matches:
+            meta = dict(getattr(m, "meta", {}) or {})
+            sev = str(meta.get("severity", "medium")).lower()
+            sev = sev if sev in SEVERITIES else "medium"
+            try:
+                w = float(meta.get("score", _SEV_WEIGHT[sev]))
+            except (TypeError, ValueError):
+                w = _SEV_WEIGHT[sev]
+            ev = []
+            for sm in list(getattr(m, "strings", []) or [])[:20]:
+                if hasattr(sm, "instances"):  # yara-python >= 4.3
+                    for inst in list(sm.instances)[:3]:
+                        ev.append(_ev("yara_string", sm.identifier, getattr(inst, "offset", None)))
+                elif isinstance(sm, tuple) and len(sm) >= 2:  # legacy (offset, id, data)
+                    ev.append(_ev("yara_string", sm[1], sm[0]))
+            ev = ev or [_ev("yara_rule", m.rule)]
+            refs = [str(meta[k]) for k in ("reference", "references", "url") if meta.get(k)]
+            res["matched"].append({"id": f"yara.{getattr(m, 'namespace', 'default')}.{m.rule}", "name": m.rule,
+                                   "severity": sev, "weight": min(100.0, max(0.0, w)), "engine": "yara",
+                                   "evidence": ev[:20], "references": refs,
+                                   "license": str(meta.get("license", "")) or None,
+                                   "author": str(meta.get("author", "")) or None,  # DRL 1.1: keep attribution
+                                   "source": os.path.basename(f)})
+    return res
+
+
 # ---------------------------------------------------------------- public entry point
 def _evidence_summary(matched, verdict, score):
     if not matched:
@@ -445,6 +518,11 @@ def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None, allowl
     rules, errors = load_rules(extra_rule_dirs)
     ctx = build_context(report, data)
     matched = run_rules(ctx, rules)
+    ys = yara_scan(data, extra_rule_dirs) if data is not None else {"available": _yara_module() is not None,
+                                                                    "rules_loaded": 0, "matched": [], "errors": [],
+                                                                    "truncated": False, "timed_out": False}
+    matched += ys["matched"]
+    errors += ys["errors"]
     score = score_matches(matched)
     allow = load_allowlist() if allowlist is None else set(allowlist)
     allowlisted = bool(ctx["hashes"].get("sha256")) and ctx["hashes"]["sha256"] in allow
@@ -456,10 +534,10 @@ def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None, allowl
         evidence.insert(0, _ev("allowlist", f"sha256:{ctx['hashes']['sha256']} na allowlist → clean"))
     return {"disclaimer": DISCLAIMER, "score": score, "verdict": verdict,
             "evidence": evidence, "matched": matched,
-            "engines": {"chessx_rules": True, "chessx_rules_loaded": len(rules), "yara": False,
-                        "yara_rules_loaded": 0},
+            "engines": {"chessx_rules": True, "chessx_rules_loaded": len(rules), "yara": ys["available"],
+                        "yara_rules_loaded": ys["rules_loaded"]},
             "allowlisted": allowlisted, "limits": {"bytes_scanned": len(data) if data is not None else 0,
-                                             "truncated": False, "timed_out": False},
+                                             "truncated": ys["truncated"], "timed_out": ys["timed_out"]},
             "errors": errors, "confidence": round(min(1.0, 0.3 + 0.1 * len(matched)), 2) if matched else 0.5,
             "thresholds": dict(THRESHOLDS), "schema_version": SCHEMA_VERSION}
 

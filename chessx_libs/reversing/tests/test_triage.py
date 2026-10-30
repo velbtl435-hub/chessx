@@ -180,3 +180,42 @@ def test_cli_triage_section(suspicious_bin, capsys):
 def test_public_api_exports():
     from chessx_libs import reversing as rv
     assert callable(rv.triage.triage) and callable(rv.triage_file) and callable(rv.investigate) and callable(rv.reversal_summary)
+
+
+def test_yara_absent_graceful(monkeypatch):
+    monkeypatch.setattr(tr, "_yara_module", lambda: None)
+    t = tr.triage({"file": {"sha256": "1" * 64}}, b"data")
+    assert t["engines"]["yara"] is False and t["engines"]["yara_rules_loaded"] == 0 and t["verdict"] == "clean"
+
+
+def test_yara_fake_engine_match_offsets_and_attribution(monkeypatch, tmp_path):
+    import types
+    calls = {}
+
+    class Inst:
+        offset = 4
+
+    class SM:
+        identifier = "$a"
+        instances = [Inst()]
+
+    class M:
+        rule, namespace = "Demo_Rule", "default"
+        meta = {"author": "Florian Roth", "license": "Detection Rule License 1.1", "severity": "high", "score": 45}
+        strings = [SM()]
+
+    class Rules:
+        def match(self, data, timeout):
+            calls["timeout"] = timeout
+            return [M()]
+
+    def compile(filepath, includes):
+        calls["includes"] = includes
+        return Rules()
+    monkeypatch.setattr(tr, "_yara_module", lambda: types.SimpleNamespace(compile=compile))
+    (tmp_path / "demo.yar").write_text("rule Demo_Rule { condition: true }")
+    t = tr.triage({"file": {"sha256": "2" * 64}}, b"xxxxabc", [str(tmp_path)])
+    m = [x for x in t["matched"] if x["engine"] == "yara"][0]
+    assert calls == {"includes": False, "timeout": tr.YARA_TIMEOUT}
+    assert m["author"] == "Florian Roth" and m["evidence"][0]["offset"] == 4 and t["verdict"] == "likely_malicious"
+    assert t["engines"]["yara"] and t["engines"]["yara_rules_loaded"] == 1
