@@ -1,0 +1,16 @@
+# Test-file detection. The EICAR test string itself is never stored in the repo:
+# we match only its well-known SHA-256 / MD5 digests.
+[[rule]]
+id = "cx.test.eicar"
+name = "EICAR anti-virus test file"
+severity = "high"
+description = "Arquivo de teste padrão EICAR (não é malware; usado para testar pipelines AV)."
+references = ["https://www.eicar.org/download-anti-malware-testfile/"]
+license = "MIT"
+author = "ChessX Time 1"
+version = "1.0.0"
+weight = 50
+tags = ["test", "eicar"]
+
+[rule.condition]
+hashes = { sha256_any = ["275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"], md5_any = ["44d88612fea8a8f36de82e1278abb02f"] }

@@ -1,0 +1,424 @@
+"""Defensive static malware triage (PRIORITY #25, spec docs/specs/MALWARE_TRIAGE.md).
+
+Static only: the sample is NEVER executed, no network calls, nothing uploaded.
+Heuristics are NOT an antivirus — every verdict carries its score and evidence.
+
+Rules: ChessX TOML/JSON (``cx.*``, MIT) evaluated over the existing reversing
+report (strings/imports/sections/entropy/hashes/imphash/fingerprint/packing),
+plus optional yara-python (stage D). No eval/exec/pickle anywhere.
+"""
+from __future__ import annotations
+
+import fnmatch, json, math, os, re
+
+try:  # Python 3.11+
+    import tomllib as _toml
+except Exception:  # pragma: no cover - fallback to tomli, else JSON-only
+    try:
+        import tomli as _toml  # type: ignore
+    except Exception:
+        _toml = None
+
+SCHEMA_VERSION = 1
+RULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules")
+BUILTIN_DIR = os.path.join(RULES_DIR, "builtin")
+ENV_RULES = "CHESSX_TRIAGE_RULES"
+SEVERITIES = ("info", "low", "medium", "high", "critical")
+REQUIRED = {"id": str, "name": str, "severity": str, "description": str, "license": str,
+            "version": str, "weight": (int, float), "condition": dict}
+OPTIONAL = {"references": list, "author": str, "enabled": bool, "tags": list}
+THRESHOLDS = {"suspicious": 15, "likely_malicious": 40}
+MAX_REGEX_LEN = 200
+MAX_RULE_FILE = 1 << 20  # 1 MiB per rule file
+ID_RE = re.compile(r"^[A-Za-z0-9_.\-]{3,80}$")
+PREDICATES = ("strings", "imports", "libraries", "sections", "entropy", "packing", "hashes",
+              "imphash", "fingerprint", "headers", "reversal", "file", "indicators")
+DISCLAIMER = ("Triagem estática defensiva; amostra nunca executada; sem rede. "
+              "Heurísticas não são antivírus.")
+
+
+class RuleError(ValueError):
+    pass
+
+
+# ---------------------------------------------------------------- loading / validation
+def _validate_node(node, path="condition"):
+    if not isinstance(node, dict) or len(node) != 1:
+        raise RuleError(f"{path}: nó deve ser um dict com exatamente uma chave")
+    (k, v), = node.items()
+    if k in ("all", "any"):
+        if not isinstance(v, list) or not v:
+            raise RuleError(f"{path}.{k}: lista não vazia esperada")
+        for i, sub in enumerate(v):
+            _validate_node(sub, f"{path}.{k}[{i}]")
+    elif k == "not":
+        _validate_node(v, f"{path}.not")
+    elif k in PREDICATES:
+        if not isinstance(v, dict) or not v:
+            raise RuleError(f"{path}.{k}: dict de parâmetros esperado")
+        for rx in v.get("regex_any", []) or []:
+            if not isinstance(rx, str) or len(rx) > MAX_REGEX_LEN:
+                raise RuleError(f"{path}.{k}: regex inválida/longa demais")
+            try:
+                re.compile(rx)
+            except re.error as exc:
+                raise RuleError(f"{path}.{k}: regex inválida: {exc}")
+    else:
+        raise RuleError(f"{path}: operador/predicado desconhecido {k!r}")
+
+
+def validate_rule(rule: dict) -> dict:
+    """Validate one rule dict (pure data). Raises RuleError. Returns normalized copy."""
+    if not isinstance(rule, dict):
+        raise RuleError("regra deve ser objeto")
+    for k, t in REQUIRED.items():
+        if k not in rule:
+            raise RuleError(f"campo obrigatório ausente: {k}")
+        if not isinstance(rule[k], t) or isinstance(rule[k], bool) and k == "weight":
+            raise RuleError(f"campo {k}: tipo inválido")
+    for k, t in OPTIONAL.items():
+        if k in rule and not isinstance(rule[k], t):
+            raise RuleError(f"campo {k}: tipo inválido")
+    unknown = set(rule) - set(REQUIRED) - set(OPTIONAL)
+    if unknown:
+        raise RuleError(f"campos desconhecidos: {sorted(unknown)}")
+    if not ID_RE.match(rule["id"]):
+        raise RuleError(f"id inválido: {rule['id']!r}")
+    if rule["severity"] not in SEVERITIES:
+        raise RuleError(f"severity inválida: {rule['severity']!r}")
+    if not 0 <= rule["weight"] <= 100:
+        raise RuleError("weight fora de 0..100")
+    _validate_node(rule["condition"])
+    out = dict(rule)
+    out.setdefault("references", [])
+    out.setdefault("tags", [])
+    out.setdefault("enabled", True)
+    return out
+
+
+def _parse_file(path: str) -> list:
+    if os.path.getsize(path) > MAX_RULE_FILE:
+        raise RuleError("arquivo de regras grande demais")
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    if path.endswith(".json"):
+        doc = json.loads(raw.decode("utf-8"))
+    elif path.endswith(".toml"):
+        if _toml is None:
+            raise RuleError("TOML indisponível (Python<3.11 sem tomli); use JSON")
+        doc = _toml.loads(raw.decode("utf-8"))
+    else:
+        raise RuleError("extensão não suportada")
+    if isinstance(doc, list):
+        rules = doc
+    elif isinstance(doc, dict):
+        rules = doc.get("rule", doc.get("rules", [doc] if "id" in doc else []))
+    else:
+        raise RuleError("documento inválido")
+    if not isinstance(rules, list):
+        raise RuleError("'rule' deve ser lista")
+    return rules
+
+
+def _safe_files(directory: str, exts) -> list:
+    """Files directly under *directory* whose realpath stays inside it (no .. / symlink escape)."""
+    base = os.path.realpath(directory)
+    out = []
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return out
+    for n in names:
+        if not n.endswith(exts):
+            continue
+        p = os.path.realpath(os.path.join(base, n))
+        if os.path.dirname(p) == base and os.path.isfile(p):
+            out.append(p)
+    return out
+
+
+def rule_dirs(extra=None) -> list:
+    """Load order: builtin → $CHESSX_TRIAGE_RULES (os.pathsep) → *extra* argument."""
+    dirs = [BUILTIN_DIR]
+    dirs += [d for d in os.environ.get(ENV_RULES, "").split(os.pathsep) if d]
+    dirs += list(extra or [])
+    return dirs
+
+
+def manifest() -> dict:
+    p = os.path.join(RULES_DIR, "MANIFEST.toml")
+    if _toml is None or not os.path.isfile(p):
+        return {"schema_version": SCHEMA_VERSION}
+    with open(p, "rb") as fh:
+        return _toml.load(fh)
+
+
+def load_rules(extra=None) -> tuple:
+    """Return (rules, errors). Invalid file/rule is skipped and reported (fail closed per pack)."""
+    rules, errors, seen = [], [], set()
+    for d in rule_dirs(extra):
+        for f in _safe_files(d, (".toml", ".json")):
+            if os.path.basename(f) == "MANIFEST.toml":
+                continue
+            try:
+                raw = _parse_file(f)
+                batch = [validate_rule(r) for r in raw]
+            except Exception as exc:
+                errors.append(f"{f}: {exc}")
+                continue
+            for r in batch:
+                if r["id"] in seen:
+                    errors.append(f"{f}: id duplicado {r['id']}")
+                    continue
+                seen.add(r["id"])
+                if r["enabled"]:
+                    r["_source"] = f
+                    rules.append(r)
+    return rules, errors
+
+
+# ---------------------------------------------------------------- context from report
+def _entropy(data: bytes) -> float:
+    if not data:
+        return 0.0
+    counts = [0] * 256
+    for b in data:
+        counts[b] += 1
+    n = len(data)
+    return round(-sum(c / n * math.log2(c / n) for c in counts if c), 3)
+
+
+def build_context(report: dict, data: bytes | None = None, max_strings: int = 20000) -> dict:
+    """Flatten the investigate() report (+ raw bytes) into the fields rules can test."""
+    from .strings import strings_with_offsets
+    hdr = report.get("headers") or {}
+    pv = report.get("provenance") or {}
+    rs = report.get("reversal_summary") or {}
+    fi = report.get("file") or {}
+    strs = strings_with_offsets(data, 5)[:max_strings] if data is not None else (report.get("strings") or {}).get("sample", [])
+    imports = [str(i) for i in hdr.get("imports", [])]
+    dl = (rs.get("capabilities") or {}).get("delay_imports") or {}
+    for lib, funcs in (dl.items() if isinstance(dl, dict) else []):
+        imports += [f"{lib}!{f}" for f in funcs]
+    ind = report.get("indicators") or {}
+    hashes = dict(pv.get("hashes") or {})
+    hashes.setdefault("sha256", fi.get("sha256"))
+    hashes.setdefault("md5", fi.get("md5"))
+    return {
+        "strings": strs,
+        "imports": imports,
+        "libraries": [str(x) for x in hdr.get("libraries", [])],
+        "sections": [{"name": s.get("name", ""), "entropy": s.get("entropy")} for s in pv.get("section_entropy", [])]
+                    or [{"name": s.get("name", ""), "entropy": None} for s in hdr.get("sections", [])],
+        "file_entropy": (report.get("detect") or {}).get("entropy", _entropy(data) if data is not None else 0.0),
+        "packing": pv.get("packing") or {},
+        "hashes": {k: (v or "").lower() for k, v in hashes.items() if v},
+        "imphash": (pv.get("imphash") or hdr.get("imphash") or "") or "",
+        "fingerprint": [f.get("toolchain", "") for f in pv.get("fingerprint", []) if f.get("score", 1)]
+                       + [o.get("toolchain", "") for o in report.get("origin", []) if isinstance(o, dict)],
+        "format": hdr.get("format") or "",
+        "capabilities": list(((rs.get("capabilities") or {}).get("capabilities") or {}).keys()),
+        "size": fi.get("size", len(data) if data is not None else 0),
+        "indicators": ind,
+    }
+
+
+# ---------------------------------------------------------------- evaluation
+def _ev(kind, value, offset=None):
+    return {"kind": kind, "value": str(value)[:200], "offset": offset}
+
+
+def _globs(names, pats):
+    hits = []
+    for p in pats:
+        pl = p.lower()
+        for n in names:
+            if fnmatch.fnmatchcase(n.lower(), pl):
+                hits.append((p, n))
+                break
+    return hits
+
+
+def _pred(kind: str, p: dict, ctx: dict):
+    """Return (matched, evidence). Every key inside *p* must hold (AND)."""
+    ev = []
+    if kind == "strings":
+        if "contains_any" in p:
+            found = []
+            for needle in p["contains_any"]:
+                nl = needle.lower()
+                s = next((s for s in ctx["strings"] if nl in s["value"].lower()), None)
+                if s:
+                    found.append(_ev("string", s["value"], s.get("offset")))
+            if len(found) < int(p.get("min_matches", 1)):
+                return False, []
+            ev += found
+        if "regex_any" in p:
+            found = []
+            for rx in p["regex_any"]:
+                c = re.compile(rx, re.I)
+                s = next((s for s in ctx["strings"] if c.search(s["value"][:4096])), None)
+                if s:
+                    found.append(_ev("string", s["value"], s.get("offset")))
+            if len(found) < int(p.get("min_matches", 1)):
+                return False, []
+            ev += found
+        return bool(ev), ev
+    if kind in ("imports", "libraries"):
+        names = ctx[kind]
+        if "all" in p:
+            h = _globs(names, p["all"])
+            if len(h) != len(p["all"]):
+                return False, []
+            ev += [_ev("import" if kind == "imports" else "library", n) for _, n in h]
+        if "any" in p:
+            h = _globs(names, p["any"])
+            if len(h) < int(p.get("min_matches", 1)):
+                return False, []
+            ev += [_ev("import" if kind == "imports" else "library", n) for _, n in h]
+        return bool(ev), ev
+    if kind == "sections":
+        secs = ctx["sections"]
+        if "name_any" in p:
+            want = {x.lower() for x in p["name_any"]}
+            hit = [s for s in secs if s["name"].lower() in want]
+            if not hit:
+                return False, []
+            ev += [_ev("section", s["name"]) for s in hit]
+        if "entropy_gt" in p:
+            hit = [s for s in secs if s["entropy"] is not None and s["entropy"] > p["entropy_gt"]]
+            if not hit:
+                return False, []
+            ev += [_ev("section_entropy", f"{s['name']}={s['entropy']}") for s in hit[:5]]
+        return bool(ev), ev
+    if kind == "entropy":
+        e = ctx["file_entropy"] or 0.0
+        ok = e > p.get("file_gt", -1) and e < p.get("file_lt", 9)
+        return ok, [_ev("entropy", e)] if ok else []
+    if kind == "packing":
+        lp = bool(ctx["packing"].get("likely_packed"))
+        ok = lp == bool(p.get("likely_packed", True))
+        return ok, [_ev("packing", "; ".join(ctx["packing"].get("reasons", [])[:3]) or lp)] if ok else []
+    if kind == "hashes":
+        for algo in ("sha256", "md5", "sha1"):
+            vals = {v.lower() for v in p.get(f"{algo}_any", [])}
+            if vals and ctx["hashes"].get(algo) in vals:
+                return True, [_ev("hash", f"{algo}:{ctx['hashes'][algo]}")]
+        return False, []
+    if kind == "imphash":
+        ih = ctx["imphash"].lower()
+        ok = bool(ih) and ih in {v.lower() for v in p.get("any", [])}
+        return ok, [_ev("imphash", ih)] if ok else []
+    if kind == "fingerprint":
+        needle = p.get("toolchain_contains", "").lower()
+        hit = next((f for f in ctx["fingerprint"] if needle and needle in f.lower()), None)
+        return bool(hit), [_ev("fingerprint", hit)] if hit else []
+    if kind == "headers":
+        want = [x.lower() for x in p.get("format_any", [])]
+        ok = any(ctx["format"].lower().startswith(w) for w in want)
+        return ok, [_ev("format", ctx["format"])] if ok else []
+    if kind == "reversal":
+        hit = [c for c in ctx["capabilities"] if c in p.get("capability_any", [])]
+        return bool(hit), [_ev("capability", c) for c in hit]
+    if kind == "file":
+        sz = ctx["size"] or 0
+        ok = sz > p.get("size_gt", -1) and sz < p.get("size_lt", 1 << 62)
+        return ok, [_ev("size", sz)] if ok else []
+    if kind == "indicators":
+        ind = ctx["indicators"]
+        for key in ("urls", "ips", "emails"):
+            if f"{key}_count_gt" in p:
+                vals = ind.get(key, []) or []
+                if len(vals) <= p[f"{key}_count_gt"]:
+                    return False, []
+                ev += [_ev(key[:-1], v) for v in vals[:5]]
+        return bool(ev), ev
+    return False, []
+
+
+def evaluate(node: dict, ctx: dict):
+    """Boolean tree evaluation → (bool, evidence)."""
+    (k, v), = node.items()
+    if k == "all":
+        ev = []
+        for sub in v:
+            ok, e = evaluate(sub, ctx)
+            if not ok:
+                return False, []
+            ev += e
+        return True, ev
+    if k == "any":
+        ev, hit = [], False
+        for sub in v:
+            ok, e = evaluate(sub, ctx)
+            if ok:
+                hit, ev = True, ev + e
+        return hit, ev
+    if k == "not":
+        ok, _ = evaluate(v, ctx)
+        return (not ok), ([_ev("not", "condição negada ausente")] if not ok else [])
+    return _pred(k, v, ctx)
+
+
+def verdict_for(score: float) -> str:
+    if score >= THRESHOLDS["likely_malicious"]:
+        return "likely_malicious"
+    if score >= THRESHOLDS["suspicious"]:
+        return "suspicious"
+    return "clean"
+
+
+def score_matches(matched: list) -> float:
+    """Sum of weights, capped at 100; info/low-only hits never exceed the suspicious band."""
+    s = min(100.0, float(sum(m["weight"] for m in matched)))
+    if matched and all(m["severity"] in ("info", "low") for m in matched):
+        s = min(s, THRESHOLDS["likely_malicious"] - 1)
+    return round(s, 1)
+
+
+def run_rules(ctx: dict, rules: list) -> list:
+    out = []
+    for r in rules:
+        try:
+            ok, ev = evaluate(r["condition"], ctx)
+        except Exception:  # defensive: a bad rule never breaks triage
+            continue
+        if ok:
+            out.append({"id": r["id"], "name": r["name"], "severity": r["severity"], "weight": r["weight"],
+                        "engine": "chessx", "evidence": ev[:20], "references": r["references"],
+                        "license": r["license"], "author": r.get("author")})
+    return out
+
+
+# ---------------------------------------------------------------- public entry point
+def _evidence_summary(matched, verdict, score):
+    if not matched:
+        return [_ev("summary", f"nenhuma regra batida; score={score} → {verdict}")]
+    return [_ev("summary", f"{len(matched)} regra(s) batida(s); score={score} → {verdict}")]
+
+
+def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None) -> dict:
+    """Score an investigate() report. Never executes the sample; never touches the network."""
+    rules, errors = load_rules(extra_rule_dirs)
+    ctx = build_context(report, data)
+    matched = run_rules(ctx, rules)
+    score = score_matches(matched)
+    verdict = verdict_for(score)
+    return {"disclaimer": DISCLAIMER, "score": score, "verdict": verdict,
+            "evidence": _evidence_summary(matched, verdict, score), "matched": matched,
+            "engines": {"chessx_rules": True, "chessx_rules_loaded": len(rules), "yara": False,
+                        "yara_rules_loaded": 0},
+            "allowlisted": False, "limits": {"bytes_scanned": len(data) if data is not None else 0,
+                                             "truncated": False, "timed_out": False},
+            "errors": errors, "confidence": round(min(1.0, 0.3 + 0.1 * len(matched)), 2) if matched else 0.5,
+            "thresholds": dict(THRESHOLDS), "schema_version": SCHEMA_VERSION}
+
+
+def triage_file(path: str, extra_rule_dirs=None) -> dict:
+    """Convenience: investigate(path)['triage'] computed from a fresh static report."""
+    from .detective import investigate
+    r = investigate(path)
+    if "triage" in r:
+        return r["triage"]
+    with open(path, "rb") as fh:
+        return triage(r, fh.read(), extra_rule_dirs)

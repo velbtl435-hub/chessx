@@ -1,0 +1,4 @@
+# ChessX triage rule packs (MIT). See docs/specs/MALWARE_TRIAGE.md §2.3.
+schema_version = 1
+pack_version = "1.0.0"
+license = "MIT"
