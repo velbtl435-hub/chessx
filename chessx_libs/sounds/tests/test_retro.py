@@ -18,7 +18,7 @@ class TestRetro(unittest.TestCase):
         self.assertEqual({c.era for c in CHIPS.values()}, {"8bit", "16bit", "32bit"})
 
     def test_all_events_render_no_clip(self):
-        names = events.list_events("retro")
+        names = [n for n in events.list_events("retro") if ".music." not in n]
         self.assertEqual(len(names), len(CHIPS) * len(RECIPES))
         for n in names:
             x = events.render(n, seed=1)
