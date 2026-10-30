@@ -33,6 +33,8 @@ class TestPythonFallback(unittest.TestCase):
 @unittest.skipUnless(native.find("hello_fusion"), "libcx_hello_fusion not built (make -C c native)")
 class TestNativeParity(unittest.TestCase):
     def test_backend(self):
+        if os.environ.get("CHESSX_NATIVE") == "0" or native.load("hello_fusion") is None:
+            self.skipTest("native disabled (CHESSX_NATIVE=0) or lib not loadable")
         self.assertEqual(hf.backend(), "native")
 
     def test_crc(self):
