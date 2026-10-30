@@ -118,8 +118,14 @@ optional scalar `echo_delay` (s). Pass it via `compose(..., automation=...)` or 
 hold row. On SID it drives the global filter; on other chips a song-level LP filter. Echo automation adds a feedback
 delay bus (on SNES it replaces the fixed S-DSP echo). Songs without automation render exactly as before.
 
+### OPL2 rhythm mode
+`compose("opl", ..., rhythm=True)` / text line `rhythm on` (before patterns) switches the OPL2 to rhythm mode like
+register 0xBD bit 5: channels 7-9 become the five drums `bd` `sd` `hh` `tom` `cym` (hits k s h t c), leaving 6 melodic
+channels. `fm.opl_rhythm` follows the hardware tricks: BD is a normal 2-op FM voice, TOM the lone ch9 modulator, SD
+uses bit 8 of the ch8 modulator phase XOR the 23-bit noise LFSR, HH/CYM build their phase from bit logic of op13
+(ch8) and op17 (ch9) phases (HH also with noise). Drum letters `t`/`c` fall back to kick/hat on other kits.
+
 ## Backlog (retro)
 
-* True OPL rhythm mode (BD/SD/TT/CY/HH from shared operators) instead of rhythm-style kit.
 * Loop tail crossfade (echo/reverb tail wrapping into the next pass) for seamless loops.
 * Per-channel instruments in the compact text format (e.g. `inst pulse1 duty=0.125`).

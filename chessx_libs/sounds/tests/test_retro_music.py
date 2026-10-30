@@ -131,6 +131,36 @@ class TestRetroMusic(unittest.TestCase):
         with self.assertRaises(ValueError):
             M.render_song(M.compose("nes", bars=1, automation={"wobble": [(0, 1)]}))
 
+    def test_opl_rhythm_mode(self):
+        from chessx_libs.sounds.retro.fm import opl_rhythm, opl_noise
+        f = np.full(4410, 300.0)
+        outs = {h: opl_rhythm(h, f, 44100, 1) for h in ("bd", "sd", "hh", "tom", "cym")}
+        for h, x in outs.items():
+            self.assertTrue(np.isfinite(x).all() and np.abs(x).max() <= 1.0, h)
+        self.assertEqual(len({round(float(np.abs(np.diff(x)).mean()), 3) for x in outs.values()}), 5)
+        self.assertTrue(np.array_equal(opl_noise(1000, 3), opl_noise(1000, 3)))
+        with self.assertRaises(ValueError):
+            opl_rhythm("cowbell", f, 44100)
+        s = M.compose("opl", "title", 2, bars=2, rhythm=True)
+        names = [c.name for c in s.channels]
+        self.assertEqual(names[6:], ["bd", "sd", "hh", "tom", "cym"])
+        segs = M._channel_segments(s, s.channels[6], 1)
+        self.assertTrue(any(g.get("rhythm") == "bd" for g in segs))
+        self.assertTrue(any(c and c.get("drum") in "tc" for p in s.patterns.values() for c in p["tom"] + p["cym"]))
+        x = M.render_song(s)
+        self.assertLessEqual(float(np.abs(x).max()), 0.9)
+        self.assertFalse(np.array_equal(x, M.render_song(M.compose("opl", "title", 2, bars=2))))
+        t = M.parse_song("chip opl\nrhythm on\npattern A\nbd k . k .\nhh h h h h\ncym c . . .\ntom . . t t\n")
+        self.assertTrue(t.rhythm)
+        self.assertLessEqual(float(np.abs(M.render_song(t)).max()), 0.9)
+        with self.assertRaises(ValueError):
+            M.parse_song("chip nes\nrhythm on\n")
+        with self.assertRaises(ValueError):
+            M.parse_song("chip opl\npattern A\nopl1 C4\nrhythm on\n")
+        self.assertEqual(M.parse_cell("t"), {"drum": "t"})  # tom off rhythm mode falls back to the kit kick
+        g = M.parse_song("chip gb\npattern A\nnoise c . . .\n")
+        self.assertEqual(M._channel_segments(g, g.channels[3], 1)[0]["f0"], M.DRUM_KITS["gb"]["h"]["f0"])
+
     def test_loop_option(self):
         a = events.render("retro.gb.music.victory", seed=1)
         b = events.render("retro.gb.music.victory", seed=1, loops=2)

@@ -46,6 +46,7 @@ class Song:
     loop: bool = True
     title: str = ""
     style: str = ""
+    rhythm: bool = False        # OPL2 rhythm mode (channels 7-9 -> BD/SD/TOM/CYM/HH)
     sid_filter: dict = None     # SID global filter: {mode, res, cutoff | from/to, voices: [routed channel names]}
     automation: dict = field(default_factory=dict)  # param -> [(row, value), ...] (rows within one order pass)
 
@@ -138,7 +139,22 @@ def _ps1_extra():
     return ex
 
 
-def layout(chip_name):
+def opl_rhythm_layout():
+    """OPL2 with rhythm mode on: 6 melodic channels + the 5 rhythm instruments carved out of channels 7-9."""
+    chans = LAYOUTS["opl"]()[:6]
+    chans[5] = Channel("opl6", "tone", {"ws": 1, "mod": 1.0}, 0.35, "echo", 0.5)
+    return chans + _L(("bd", "drums", {}, 0.8, "drums", 0.0, 0, 0, "k"),
+                      ("sd", "drums", {}, 0.6, "drums", 0.1, 0, 0, "s"),
+                      ("hh", "drums", {}, 0.4, "drums", 0.3, 0, 0, "h"),
+                      ("tom", "drums", {}, 0.6, "drums", -0.2, 0, 0, "t"),
+                      ("cym", "drums", {}, 0.35, "drums", -0.3, 0, 0, "c"))
+
+
+def layout(chip_name, rhythm=False):
+    if rhythm:
+        if chip_name != "opl":
+            raise ValueError("rhythm mode exists only on the OPL2 ('opl')")
+        return opl_rhythm_layout()
     try:
         return LAYOUTS[chip_name]()
     except KeyError:
@@ -151,6 +167,22 @@ DRUMS = {  # drum hit -> segment (rendered by the chip's noise/tone voices)
     "s": {"wave": "noise", "f0": 2500, "f1": 1200, "decay": 0.06, "vol": 0.8},
     "h": {"wave": "noise", "f0": 9000, "decay": 0.015, "vol": 0.45},
 }
+
+
+DRUM_ALIASES = {"t": "k", "c": "h"}  # tom/cymbal fall back to kick/hat on kits without them
+
+OPL_RHYTHM_KIT = {  # true OPL2 rhythm mode instruments (see fm.opl_rhythm)
+    "k": {"wave": "tone", "rhythm": "bd", "f0": 110, "f1": 50, "decay": 0.12, "vol": 1.0},
+    "s": {"wave": "tone", "rhythm": "sd", "f0": 360, "decay": 0.08, "vol": 0.8},
+    "h": {"wave": "tone", "rhythm": "hh", "f0": 360, "decay": 0.03, "vol": 0.45},
+    "t": {"wave": "tone", "rhythm": "tom", "f0": 270, "decay": 0.15, "vol": 0.8},
+    "c": {"wave": "tone", "rhythm": "cym", "f0": 270, "decay": 0.25, "vol": 0.4},
+}
+
+
+def drum_segment(song, hit):
+    kit = OPL_RHYTHM_KIT if (song.rhythm and song.chip == "opl") else DRUM_KITS.get(song.chip, DRUMS)
+    return kit.get(hit) or kit[DRUM_ALIASES[hit]]
 
 
 def _kit(**hits):
@@ -224,7 +256,7 @@ def _channel_segments(song, ch, loops):
                 elif "drum" in cell and cell["drum"] not in ch.hits:
                     cur = dict(rest, dur=rd)
                 elif "drum" in cell:
-                    d = DRUM_KITS.get(song.chip, DRUMS)[cell["drum"]]
+                    d = drum_segment(song, cell["drum"])
                     cur = {**ch.opts, **d, "dur": rd, "vol": d["vol"] * cell.get("vol", 1.0)}
                     if ch.name == "voice3" and d["wave"] == "tone":
                         cur["shape"] = "triangle"
@@ -442,9 +474,10 @@ def _chord(mode, root, degree):
     return [root + sc[(degree + k) % 7] + 12 * ((degree + k) // 7) for k in (0, 2, 4)]
 
 
-def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None):
+def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None, rhythm=False):
     """Deterministic procedural Song for chip/style/seed. bars = bars of 16 rows (one chord per bar).
-    automation: {param: [(row, value), ...]} for cutoff (Hz), res (0..1), echo_fb (0..0.9), echo_mix (0..1)."""
+    automation: {param: [(row, value), ...]} for cutoff (Hz), res (0..1), echo_fb (0..0.9), echo_mix (0..1).
+    rhythm=True (OPL only): OPL2 rhythm mode, drums on BD/SD/HH/TOM/CYM from channels 7-9."""
     np = need_numpy()
     if style not in STYLES:
         raise KeyError(f"unknown style {style!r}; choose from {sorted(STYLES)}")
@@ -454,7 +487,7 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None
     mode, sc = st["mode"], MODES[st["mode"]]
     prog = st["progs"][int(r.integers(len(st["progs"])))]
     chords = [prog[b % len(prog)] for b in range(bars)]
-    chans = layout(chip_name)
+    chans = layout(chip_name, rhythm=rhythm)
     roles = {}
     for c in chans:
         if c.role:
@@ -519,7 +552,11 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None
         if drum_pats:
             pat = drum_pats[(b + variant) % len(drum_pats)]
             if b == bars - 1 and style in ("title", "battle"):
-                pat = pat[:12] + "ssss"  # fill
+                pat = pat[:12] + ("sstt" if rhythm else "ssss")  # fill (toms in OPL rhythm mode)
+            if rhythm and b % 2 == 0:
+                pat = "c" + pat[1:] if pat[0] == "." else pat
+            if rhythm and b == 0:
+                pat = pat[:8] + "c" + pat[9:] if pat[8] == "." else pat
             p["drums"] = [None if c == "." else {"drum": c} for c in pat]
         else:
             p["drums"] = [None] * 16
@@ -551,7 +588,7 @@ def compose(chip_name, style="title", seed=0, bars=4, root=None, automation=None
         sid_filter = dict(SID_FILTER[style], voices=voices)
     return Song(chip=chip_name, bpm=st["bpm"], speed=st["speed"], channels=chans, patterns=patterns,
                 order=order, loop=style not in ("game_over", "victory"), title=f"{style} #{seed}", style=style,
-                sid_filter=sid_filter, automation=dict(automation or {}))
+                sid_filter=sid_filter, rhythm=bool(rhythm), automation=dict(automation or {}))
 
 
 def render_music(chip_name, style="title", seed=0, bars=2, rate=dsp.RATE, loops=1, loop=False):
@@ -579,7 +616,7 @@ def _bad(tok):
 
 
 def parse_cell(tok):
-    """'.'=hold, '-' or '---'=off, 'k'/'s'/'h'=drum, 'C4' note, effects after ':' e.g. C4:a047 v u12 d5 @7 w1.
+    """'.'=hold, '-' or '---'=off, 'k'/'s'/'h'/'t'/'c'=drum (kick/snare/hat/tom/cymbal; t/c fall back to k/h off OPL rhythm mode), 'C4' note, effects after ':' e.g. C4:a047 v u12 d5 @7 w1.
     a=arpeggio (hex semitone digits), v=vibrato, u/d=slide up/down N semitones, @=volume 0-9, w=duty 0-3.
     Automation (song-wide, set at this row, linear to the next point): f<Hz> cutoff, q<0-9> resonance,
     e<0-9> echo feedback (tenths, max 0.9), m<0-9> echo mix. A bare '.:f800' sets automation on a hold row."""
@@ -591,7 +628,7 @@ def parse_cell(tok):
     if set(tok) == {"-"}:
         return {"off": True}
     head, *fx = tok.split(":")
-    if head in DRUMS:
+    if head in DRUMS or head in DRUM_ALIASES:
         cell = {"drum": head}
     else:
         cell = {"n": parse_note(head)}
@@ -652,6 +689,12 @@ def parse_song(text):
             continue
         if song is None:
             raise ValueError("song text must start with 'chip <name>'")
+        if key == "rhythm":
+            if song.patterns:
+                raise ValueError("'rhythm' must come before any pattern")
+            on = (rest or ["on"])[0].lower() in ("on", "yes", "1", "true")
+            song.rhythm, song.channels = on, layout(song.chip, rhythm=on)
+            continue
         if key == "pattern":
             pat = song.patterns.setdefault(rest[0], {})
             continue
