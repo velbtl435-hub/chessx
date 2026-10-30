@@ -1,5 +1,5 @@
 # ChessX - Master Task List & Analysis
-# Version 0.5.7 | Updated 10/30/2026
+# Version 0.5.8 | Updated 10/30/2026
 
 ---
 
@@ -29,7 +29,7 @@
 | A | Defensive cybersecurity suite (containment, malware analysis, firewalls) | Trust and system protection |
 | A | ASCII-art browser mode (colored square tiles + alt views) | Unique terminal navigation |
 | A | Opt-in local wellbeing mode + help-line support (gentle, non-judging, deletable) | Life protection |
-| A | Multi-agent system (independent agents, schedules, internal messaging) | Architecture differentiator |
+| A | Multi-agent system + recursive sub-agents + Agent Factory | Architecture + product differentiator |
 | B | Charts (pie, bar, all types) | Rich visual but complex |
 | B | Text analysis | Content intelligence |
 | B | Text/file generation (open + closed formats) | Productivity |
@@ -157,7 +157,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 - ChessX is one tool within Artware
 - User: SuperGrok, borrowed ChatGPT, GitHub velbtl435-hub
 - Start date: 10/30/2026
-- Repo: github.com/velbtl435-hub/chessx (commit aad18054)
+- Repo: github.com/velbtl435-hub/chessx (commit e17e40a9)
 
 ---
 
@@ -229,7 +229,7 @@ Close v1 with core only. Treat rest as visible roadmap.
 | Cookie hygiene | Idea — B |
 | ASCII browser mode | Idea — A candidate |
 | Wellbeing mode + help-line support (opt-in, local-only) | Idea — A (life protection) |
-| Multi-agent system | Idea — A |
+| Multi-agent system + Agent Factory | Idea — A (factory = product differentiator) |
 
 ---
 
@@ -456,5 +456,19 @@ Explicit framing: **protection of ChessX and the user's own systems only**. Not 
 - Media collector
 - Translator
 
-### 22.5 Rank
+### 22.5 Sub-agents
+- Each agent can have multiple sub-agents, recursively
+- Sub-agents can be created without a fixed limit (bounded only by machine resources)
+
+### 22.6 Automatic agent generation
+- The program can GENERATE agent types automatically, based on usage patterns
+
+### 22.7 Agent Factory
+- The user creates agents through a dedicated interface
+- The user defines: name, role, prompts, sub-prompts, scripts, code, reference materials, links, and many other input types
+- Factory agents inherit the base capabilities (search, crypto, i18n, etc.) and can be specialized
+- Each factory agent has its own isolated workspace
+
+### 22.8 Rank
 - Class A (ChessX's architecture differentiator)
+- Note: the Agent Factory is the product differentiator
