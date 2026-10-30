@@ -55,3 +55,5 @@ Python 3.8 or higher. No external dependencies.
 ## License
 
 Free to use. Personal project in development.
+
+Agents / Agent Factory / TamagóX: see [docs/AGENT_FACTORY.md](docs/AGENT_FACTORY.md) (`python3 chessx.py agent --help`).
