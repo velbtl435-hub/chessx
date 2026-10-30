@@ -10,29 +10,110 @@ def _clean(s: str) -> str:
     return html.unescape(_TAG.sub("", s)).strip()
 
 
+def split_glued_title(title: str, others=()) -> str:
+    """ddgs sometimes returns one title glued to the titles of other results, e.g.
+    'python-chess - GitHubchess · PyPIchess — docs'. Split on the other titles
+    of the same result set and join the pieces with ' | '."""
+    known = {o for o in others if o and o != title and len(o) > 5}
+    if sum(o in title for o in known) < 2:  # a real title may contain one other title
+        return title
+    parts = [title]
+    for o in sorted(known, key=len, reverse=True):
+        nxt = []
+        for p in parts:
+            if o in p and p not in known:
+                bits = p.split(o)
+                for i, b in enumerate(bits):
+                    if b.strip():
+                        nxt.append(b)
+                    if i < len(bits) - 1:
+                        nxt.append(o)
+            else:
+                nxt.append(p)
+        parts = nxt
+    parts = [p.strip(" -|\u00b7\u2014") for p in parts if p.strip(" -|\u00b7\u2014")]
+    return " | ".join(parts) if parts else title
+
+
 class DuckDuckGoEngine(Engine):
-    """Scrapes html.duckduckgo.com (no key). Tolerates class-name changes."""
+    """Scrapes DuckDuckGo's no-JS pages (html. and lite.), no key needed.
+
+    DuckDuckGo intermittently answers scripted clients with a bot-check ("anomaly") page.
+    Strategy: curl_cffi browser impersonation first (if installed), then rotating
+    User-Agent/Accept-Language headers over html/lite and GET/POST. If every attempt is
+    blocked, a clear SearchError is raised (external limitation, not a ChessX bug).
+    """
     name = "duckduckgo"
-    URL = "https://html.duckduckgo.com/html/?q="
+    ENDPOINTS = ("https://html.duckduckgo.com/html/", "https://lite.duckduckgo.com/lite/")
+    URL = ENDPOINTS[0] + "?q="  # kept for backwards compatibility
     LINK = re.compile(r'<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.S)
+    LITE_LINK = re.compile(r"""<a[^>]+href="([^"]+)"[^>]+class=['"]result-link['"][^>]*>(.*?)</a>""", re.S)
     SNIP = re.compile(r'class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</(?:a|div|td)>', re.S)
+    LITE_SNIP = re.compile(r"""class=['"]result-snippet['"][^>]*>(.*?)</td>""", re.S)
+    IMPERSONATE = ("chrome", "safari", "firefox")
+
+    def __init__(self, attempts: int = 6, seed=None):
+        self.attempts = attempts
+        self.last_error = None
+        try:
+            from ..crypto.netsec import FingerprintRotator
+            self.rotator = FingerprintRotator(seed)
+        except Exception:
+            self.rotator = None
 
     def parse(self, page: str, limit: int) -> List[Result]:
         links, snips = self.LINK.findall(page), self.SNIP.findall(page)
+        if not links:
+            links, snips = self.LITE_LINK.findall(page), self.LITE_SNIP.findall(page)
         out = []
         for i, (href, title) in enumerate(links[:limit]):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
             url = q.get("uddg", [href])[0]
+            if url.startswith("//"):
+                url = "https:" + url
             out.append(Result(_clean(title), url, _clean(snips[i]) if i < len(snips) else "",
                               self.name, self.rank_score(i, limit)))
         return out
 
+    def _plans(self):
+        try:
+            import curl_cffi  # noqa: F401  optional
+            for imp in self.IMPERSONATE:
+                yield ("curl_cffi", imp, self.ENDPOINTS[0], "GET")
+        except ImportError:
+            pass
+        for i in range(self.attempts):
+            yield ("urllib", None, self.ENDPOINTS[i // 2 % 2], ("POST", "GET")[i % 2])
+
+    def _fetch(self, how, imp, endpoint, method, query):
+        form = urllib.parse.urlencode({"q": query})
+        if how == "curl_cffi":
+            from curl_cffi import requests as creq
+            return creq.get(endpoint + "?" + form, impersonate=imp, timeout=15).text
+        headers = self.rotator.headers() if self.rotator else {"User-Agent": "Mozilla/5.0"}
+        if method == "POST":
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            return http_get(endpoint, headers=headers, data=form.encode(), timeout=15).decode("utf-8", "replace")
+        return http_get(endpoint + "?" + form, headers=headers, timeout=15).decode("utf-8", "replace")
+
     def search(self, query, limit=10):
-        page = http_get(self.URL + urllib.parse.quote_plus(query)).decode("utf-8", "replace")
-        out = self.parse(page, limit)
-        if not out and "anomaly" in page:
-            raise SearchError("duckduckgo served a bot-check (anomaly) page")
-        return out
+        blocked = 0
+        for plan in self._plans():
+            try:
+                page = self._fetch(*plan, query)
+            except Exception as e:
+                self.last_error = e
+                continue
+            out = self.parse(page, limit)
+            if out:
+                return out
+            if "anomaly" in page:
+                blocked += 1
+            else:
+                return []  # genuine empty result page
+        raise SearchError("duckduckgo served a bot-check (anomaly) page on all %d attempts "
+                          "(external anti-bot; use ddgs/Brave/SearXNG instead)" % blocked if blocked
+                          else "duckduckgo unreachable: %r" % self.last_error)
 
 
 class BraveEngine(Engine):
@@ -64,6 +145,9 @@ class DDGSEngine(Engine):
         except ImportError as e:
             raise SearchError("ddgs not installed (pip install ddgs)") from e
         rows = list(DDGS().text(query, max_results=limit))
+        titles = [_clean(r.get("title", "")) for r in rows]
+        for r, t in zip(rows, titles):
+            r["title"] = split_glued_title(t, titles)
         return [Result(r.get("title", ""), r.get("href", ""), r.get("body", ""), self.name,
                        self.rank_score(i, len(rows))) for i, r in enumerate(rows)]
 

@@ -127,9 +127,19 @@ def selftest():
     check("interface", lambda: Board([Cell("a"), Cell("b")]).render())
     check("crypto", lambda: crypto.chacha20_poly1305_decrypt(bytes(32), bytes(12),
           crypto.chacha20_poly1305_encrypt(bytes(32), bytes(12), b"x")) == b"x" or 1 / 0)
+    def srch():
+        from chessx_libs.search import MockEngine, DuckDuckGoEngine as DDG
+        from chessx_libs.search.engines import split_glued_title
+        res = multi_search([MockEngine("a"), MockEngine("b")], "chess", limit=5)
+        assert res and all(r.url for r in res)
+        page = '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.io%2F">X</a>'
+        assert DDG().parse(page, 5)[0].url == "https://x.io/"
+        assert split_glued_title("A title - GitHubB other oneC third one", ["B other one", "C third one"]) \
+            == "A title - GitHub | B other one | C third one"
+    check("search", srch)
     check("media", lambda: media.RateLimiter)
     check("reversing", lambda: reversing.extract_urls(b"see https://x.io/a") == ["https://x.io/a"] or 1 / 0)
-    check("voice", lambda: voice.TTS_BACKEND)
+    check("voice", lambda: (voice.speak("x", dry_run=True), voice.transcribe_file("/nonexistent.wav") is None or 1 / 0))
     check("windows", lambda: windows.Layout(60, 10).render())
     check("sounds", lambda: sounds.synth("boot"))
     def det():
