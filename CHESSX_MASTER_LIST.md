@@ -671,3 +671,23 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 32.3 Rank
 - Class A
+
+---
+
+## 33. FORENSIC GEOLOCATION (USER REQUEST 10/30/2026)
+
+### 33.1 Goal
+- Estimate the geographic origin of images and files
+
+### 33.2 Methods
+- EXIF/XMP GPS tags, timestamps, timezone offsets, camera/device data
+- File and container metadata (documents, video, audio), reusing media/ and reversing provenance
+- Mathematical/geometric analysis: sun position and shadow length/angle vs. time (solar azimuth/elevation), horizon and skyline matching, perspective/vanishing points, known-object scale
+- Cross-check with OSINT sources (section 28): landmarks, maps, reverse image search
+- Output: candidate locations with confidence and the evidence chain for each
+
+### 33.3 Ethics
+- Legal, consented use only; no tracking of private individuals; all analysis local
+
+### 33.4 Rank
+- Class A
