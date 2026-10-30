@@ -82,3 +82,11 @@ from chessx_libs.sounds.retro import render_sfx; x = render_sfx("fm", "explosion
 * Text format: `parse_song(text)` — see `music.DEMO`:
   `pulse1 E5 . G5:v --- C5:a047 D5:u2:@6:w1` (`.` hold, `---` off, `:a` arp hex, `:v` vib, `:u/:d` slide, `:@` vol 0-9, `:w` duty 0-3).
 * Events: `retro.<chip>.music.<style>` (2 bars by default, `bars=` kwarg) and `retro.nes.music.demo`, category `retro`.
+* Extra channels: echo (melody delayed 3 rows), countermelody (contrary motion on chord tones), layered
+  detuned/panned pads and lead/bass/harmony doubles — OPL ch 7-9, SNES 7-8, PS1 7-24; NES DPCM plays the kick.
+* Per-chip drum kits (`DRUM_KITS`): NES noise + DPCM kick, GB noise, SID pulse-sweep kick + noise, AY hw-envelope
+  kick + noise, SN periodic-noise kick, FM operator kick + inharmonic hat, OPL rhythm-mode style, SNES/PS1 table
+  kick + noise (through echo/reverb).
+* SID music uses the resonant filter with a per-style cutoff sweep (bass; band-pass lead in chess_thinking).
+* Looping: `render_music(..., loops=N)` / `loop=True` (=2 passes); events too: `events.render("retro.nes.music.title", loops=3)`.
+  Default stays a single pass.
