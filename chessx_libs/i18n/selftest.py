@@ -2,12 +2,15 @@
 from .strings import STRINGS
 from .translator import Translator
 
+# Keep in sync with strings.py: every language must have exactly this many keys.
+EXPECTED_KEYS = 61
+
 
 def run() -> bool:
     en = set(STRINGS["en"])
     assert set(STRINGS) == {"en", "pt", "ja"}, STRINGS.keys()
     for lang, table in STRINGS.items():
-        assert len(table) == 55, (lang, len(table))
+        assert len(table) == EXPECTED_KEYS, (lang, len(table))
         assert set(table) == en, (lang, en ^ set(table))
         assert all(v.strip() for v in table.values()), lang
     tr = Translator()
