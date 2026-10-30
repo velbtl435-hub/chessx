@@ -179,3 +179,18 @@ def sonify(data, steps=32, bpm=160, rate=RATE):
 
 
 register("data", lambda rate=RATE, seed=0, data=b"ChessX", **kw: sonify(data, rate=rate, **kw), "music")
+
+
+# --- retro (master list section 27): retro.<chip>.<sfx>, category 'retro' ---
+def _register_retro():
+    try:
+        from .retro import CHIPS, RECIPES, render_sfx
+    except Exception:  # numpy missing etc.: retro events simply absent
+        return
+    for _c in CHIPS:
+        for _s in RECIPES:
+            register(f"retro.{_c}.{_s}",
+                     lambda rate=RATE, seed=0, _c=_c, _s=_s, **kw: render_sfx(_c, _s, rate=rate, seed=seed), "retro")
+
+
+_register_retro()
