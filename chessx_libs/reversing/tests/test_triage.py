@@ -276,3 +276,92 @@ def test_pack_license_policy(monkeypatch, tmp_path):
     t = tr.triage({"file": {"sha256": "3" * 64}}, b"z", [str(elastic), str(drl)])
     assert seen == ["y.yar"] and any("Elastic" in e for e in t["errors"])
     assert {p["license"] for p in t["engines"]["packs"]} == {"Elastic-2.0", "DRL-1.1"}
+
+
+# ---- stage D against the REAL yara-python (skipped cleanly when not installed)
+REAL_RULE = r'''
+rule CX_Test_Marker {
+  meta:
+    author = "ChessX Time 1"
+    license = "MIT"
+    severity = "high"
+    score = 45
+    reference = "https://example.invalid/cx-test"
+  strings:
+    $m = "CHESSX-TRIAGE-TEST-MARKER"
+  condition:
+    $m
+}
+'''
+
+
+@pytest.fixture
+def real_yara():
+    return pytest.importorskip("yara")
+
+
+def test_real_yara_match_meta_offsets(real_yara, tmp_path):
+    (tmp_path / "cx_test.yar").write_text(REAL_RULE)
+    data = b"\x00" * 16 + b"CHESSX-TRIAGE-TEST-MARKER" + b"\x00" * 8
+    t = tr.triage({"file": {"sha256": "4" * 64}}, data, [str(tmp_path)])
+    m = [x for x in t["matched"] if x["engine"] == "yara"]
+    assert t["engines"]["yara"] is True and t["engines"]["yara_rules_loaded"] == 1
+    assert len(m) == 1 and m[0]["name"] == "CX_Test_Marker" and m[0]["author"] == "ChessX Time 1"
+    assert m[0]["license"] == "MIT" and m[0]["weight"] == 45 and m[0]["severity"] == "high"
+    assert m[0]["evidence"][0]["offset"] == 16 and m[0]["references"] == ["https://example.invalid/cx-test"]
+    assert t["verdict"] == "likely_malicious" and t["errors"] == []
+
+
+def test_real_yara_no_match_clean(real_yara, tmp_path):
+    (tmp_path / "cx_test.yar").write_text(REAL_RULE)
+    t = tr.triage({"file": {"sha256": "5" * 64}}, b"nothing here", [str(tmp_path)])
+    assert t["verdict"] == "clean" and t["engines"]["yara_rules_loaded"] == 1
+
+
+def test_real_yara_includes_rejected(real_yara, tmp_path):
+    (tmp_path / "inc.yara").write_text('include "other.yar"\nrule I { condition: true }')
+    (tmp_path / "other.yar").write_text(REAL_RULE)
+    t = tr.triage({"file": {"sha256": "6" * 64}}, b"x", [str(tmp_path)])
+    assert any("inc.yara" in e for e in t["errors"])
+    assert not any(m["name"] == "I" for m in t["matched"])
+
+
+def test_real_yara_broken_rule_skipped(real_yara, tmp_path):
+    (tmp_path / "bad.yar").write_text("rule {")
+    (tmp_path / "ok.yar").write_text(REAL_RULE)
+    t = tr.triage({"file": {"sha256": "7" * 64}}, b"CHESSX-TRIAGE-TEST-MARKER", [str(tmp_path)])
+    assert t["engines"]["yara_rules_loaded"] == 1 and any("bad.yar" in e for e in t["errors"])
+    assert any(m["engine"] == "yara" for m in t["matched"])
+
+
+def test_real_yara_size_cap(real_yara, tmp_path, monkeypatch):
+    (tmp_path / "cx_test.yar").write_text(REAL_RULE)
+    monkeypatch.setattr(tr, "YARA_MAX_BYTES", 64)
+    data = b"A" * 100 + b"CHESSX-TRIAGE-TEST-MARKER"  # marker beyond the cap
+    t = tr.triage({"file": {"sha256": "8" * 64}}, data, [str(tmp_path)])
+    assert t["limits"]["truncated"] is True and not any(m["engine"] == "yara" for m in t["matched"])
+    monkeypatch.undo()
+    assert tr.YARA_MAX_BYTES == 32 << 20  # default cap per spec §7.2
+
+
+def test_real_yara_timeout(real_yara, tmp_path, monkeypatch):
+    # Pathologically slow rule on synthetic data; timeout forced to 1 s.
+    (tmp_path / "slow.yar").write_text(
+        'rule Slow { strings: $a = /a.*b.*c.*d/ condition: for all i in (1..#a) : '
+        '( for all j in (1..#a) : (@a[i] + @a[j] > 0) ) }')
+    monkeypatch.setattr(tr, "YARA_TIMEOUT", 1)
+    data = b"a" * 20000 + b"bcd"
+    t = tr.triage({"file": {"sha256": "9" * 64}}, data, [str(tmp_path)])
+    assert t["limits"]["timed_out"] is True and any("slow.yar" in e for e in t["errors"])
+    assert not any(m["engine"] == "yara" for m in t["matched"])
+
+
+def test_real_yara_pack_from_local_folder(real_yara, tmp_path, monkeypatch):
+    pack = tmp_path / "mypack"; pack.mkdir()
+    (pack / "LICENSE").write_text("Permission is hereby granted, free of charge, to any person")
+    (pack / "a.yar").write_text(REAL_RULE)
+    (pack / "b.yara").write_text(REAL_RULE.replace("CX_Test_Marker", "CX_Test_Marker2"))
+    monkeypatch.setenv(tr.ENV_RULES, str(pack))
+    t = tr.triage({"file": {"sha256": "a" * 64}}, b"..CHESSX-TRIAGE-TEST-MARKER..")
+    assert t["engines"]["packs"] == [{"dir": str(pack), "license": "MIT", "files": 2}]
+    assert sorted(m["name"] for m in t["matched"] if m["engine"] == "yara") == ["CX_Test_Marker", "CX_Test_Marker2"]

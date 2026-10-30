@@ -467,7 +467,9 @@ def yara_scan(data: bytes, extra=None) -> dict:
         try:
             matches = rules.match(data=data, timeout=YARA_TIMEOUT)
         except Exception as exc:
-            if "timeout" in str(exc).lower():
+            # real yara-python raises yara.TimeoutError("scanning timed out")
+            if isinstance(exc, getattr(yara, "TimeoutError", ())) or "timed out" in str(exc).lower() \
+                    or "timeout" in str(exc).lower():
                 res["timed_out"] = True
             res["errors"].append(f"yara match {os.path.basename(f)}: {exc}")
             continue
