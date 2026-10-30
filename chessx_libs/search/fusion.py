@@ -13,22 +13,31 @@ def norm_url(url: str) -> str:
     return f"{host}{p.path.rstrip('/')}" + (f"?{p.query}" if p.query else "")
 
 
+def _unit(x) -> float:
+    """Clamp a per-engine score into [0, 1] (guards adapters that return unbounded scores)."""
+    try:
+        return min(1.0, max(0.0, float(x)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def fuse(lists: List[List[Result]]) -> List[Result]:
     merged: Dict[str, Result] = {}
     for results in lists:
         for r in results:
             k = norm_url(r.url)
+            sc = _unit(r.score)
             if k in merged:
                 m = merged[k]
                 if r.engine not in m.engines:  # bonus only when a *different* engine agrees
-                    m.score += r.score + AGREEMENT_BONUS
+                    m.score += sc + AGREEMENT_BONUS
                     m.engines.append(r.engine)
                 else:
-                    m.score = max(m.score, r.score)
+                    m.score = max(m.score, sc)
                 if len(r.snippet) > len(m.snippet):
                     m.snippet = r.snippet
             else:
-                merged[k] = Result(r.title, r.url, r.snippet, r.engine, r.score, [r.engine])
+                merged[k] = Result(r.title, r.url, r.snippet, r.engine, sc, [r.engine])
     return sorted(merged.values(), key=lambda r: r.score, reverse=True)
 
 

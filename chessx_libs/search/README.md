@@ -22,3 +22,5 @@ Multi-engine web search with result fusion (rank-based scoring, URL de-duplicati
   which usually refuse `format=json`). ddgs is skipped if not installed. DuckDuckGo is skipped if every attempt is blocked.
 - `DuckDuckGoEngine.attempt_log` holds `(how, impersonate, endpoint, method, outcome)` for each attempt of the last search.
 - Fusion: the agreement bonus applies only when a *different* engine returns the same normalized URL.
+- Scores: every engine returns per-result scores in [0, 1]. SearXNG's unbounded raw score is mapped to
+  `0.5 * rank_score + 0.5 * raw / max(raw)` (order preserved); `fuse()` also clamps each input score to [0, 1].

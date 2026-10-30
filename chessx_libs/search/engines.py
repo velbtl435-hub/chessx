@@ -186,9 +186,31 @@ class SearXNGEngine(Engine):
 
     def search(self, query, limit=10):
         data = http_json(f"{self.base_url}/search?" + urllib.parse.urlencode({"q": query, "format": "json"}))
+        return self.parse(data, limit)
+
+    def parse(self, data: dict, limit: int = 10) -> List[Result]:
         rows = data.get("results", [])[:limit]
-        return [Result(r.get("title", ""), r.get("url", ""), r.get("content", ""), self.name,
-                       float(r.get("score") or self.rank_score(i, len(rows)))) for i, r in enumerate(rows)]
+        return [Result(r.get("title", ""), r.get("url", ""), r.get("content", ""), self.name, sc)
+                for r, sc in zip(rows, self.normalize_scores(rows))]
+
+    @classmethod
+    def normalize_scores(cls, rows) -> List[float]:
+        """SearXNG's raw `score` is unbounded (often > 1) and would skew fusion. Map it into [0, 1]
+        like the other engines: 0.5 * rank_score(position) + 0.5 * raw / max(raw). SearXNG already
+        sorts by score, so order is preserved. Rows without a usable score fall back to rank_score."""
+        n = len(rows)
+        raw = []
+        for r in rows:
+            try:
+                raw.append(max(float(r.get("score") or 0.0), 0.0))
+            except (TypeError, ValueError):
+                raw.append(0.0)
+        top = max(raw, default=0.0)
+        out = []
+        for i, x in enumerate(raw):
+            rank = cls.rank_score(i, n)
+            out.append(round(min(1.0, 0.5 * rank + 0.5 * x / top), 3) if top > 0 else rank)
+        return out
 
 
 class MockEngine(Engine):
