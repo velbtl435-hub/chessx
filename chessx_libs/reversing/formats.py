@@ -92,9 +92,11 @@ def parse_pe(data: bytes) -> dict:
         name = data[o:o + 8].rstrip(b"\x00").decode("latin-1")
         vsz, va, rsz, roff = struct.unpack_from("<IIII", data, o + 8)
         secs.append({"name": name, "addr": base + va, "offset": roff, "size": rsz, "vsize": vsz})
+    imports = parse_pe_imports(data, secs, base, opt, magic)
     return {"format": "PE", "bits": 64 if magic == 0x20B else 32, "machine": PE_MACHINES.get(mach, hex(mach)),
             "timestamp": ts, "dll": bool(chars & 0x2000), "entrypoint": base + entry, "image_base": base,
-            "sections": secs, "imports": [], "dotnet": b"mscoree.dll" in data.lower()}
+            "sections": secs, "imports": sorted({f"{d}!{f}" for d, fs in imports.items() for f in fs}),
+            "import_table": imports, "imphash": imphash(imports), "dotnet": b"mscoree.dll" in data.lower()}
 
 
 def parse_macho(data: bytes) -> dict:
@@ -109,3 +111,53 @@ def parse_macho(data: bytes) -> dict:
 
 def parse_headers(data: bytes) -> dict:
     return parse_elf(data) or parse_pe(data) or parse_macho(data) or {"format": None}
+
+
+def _rva2off(rva: int, secs: list, base: int):
+    for s in secs:
+        va = s["addr"] - base
+        if va <= rva < va + max(s["size"], s.get("vsize", 0)):
+            return s["offset"] + (rva - va)
+    return None
+
+
+def parse_pe_imports(data: bytes, secs: list, base: int, opt: int, magic: int, limit: int = 4096) -> dict:
+    """Import Directory Table -> {dll: [function or #ordinal, ...]}. Tolerates malformed input."""
+    out = {}
+    try:
+        dd = opt + (112 if magic == 0x20B else 96) + 8  # data directory #1 (imports)
+        rva, _size = struct.unpack_from("<II", data, dd)
+        off = _rva2off(rva, secs, base) if rva else None
+        is64, n = magic == 0x20B, 0
+        while off is not None and n < 512:
+            ilt, _t, _f, name_rva, iat = struct.unpack_from("<IIIII", data, off)
+            if not (ilt or name_rva or iat):
+                break
+            no = _rva2off(name_rva, secs, base)
+            dll = _cstr(data, no).lower() if no is not None else "?"
+            funcs, to = [], _rva2off(ilt or iat, secs, base)
+            while to is not None and len(funcs) < limit:
+                ent = struct.unpack_from("<Q" if is64 else "<I", data, to)[0]
+                if not ent:
+                    break
+                if ent >> (63 if is64 else 31):
+                    funcs.append(f"#{ent & 0xFFFF}")
+                else:
+                    ho = _rva2off(ent & 0x7FFFFFFF, secs, base)
+                    funcs.append(_cstr(data, ho + 2) if ho is not None else "?")
+                to += 8 if is64 else 4
+            out.setdefault(dll, []).extend(funcs)
+            off += 20; n += 1
+    except (struct.error, IndexError):
+        pass
+    return out
+
+
+def imphash(imports: dict):
+    """pefile-compatible-ish imphash (md5 of 'dll.func' list, lowercased, extension stripped)."""
+    import hashlib
+    items = []
+    for dll, funcs in imports.items():
+        d = dll.rsplit(".", 1)[0] if dll.endswith((".dll", ".ocx", ".sys")) else dll
+        items += [f"{d}.{f.lower()}" for f in funcs]
+    return hashlib.md5(",".join(items).encode()).hexdigest() if items else None
