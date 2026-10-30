@@ -10,6 +10,18 @@ except Exception:
     pyttsx3 = None
 
 LANG_VOICE = {"en": "en-us", "pt": "pt-br", "ja": "ja"}
+# MBROLA diphone voices sound far less robotic than formant eSpeak; used when installed.
+MBROLA = {"en": ("mb-us1", "us1"), "pt": ("mb-br1", "br1"), "ja": ()}
+
+
+def _espeak_voice(lang):
+    code = (lang or "en").split("-")[0].lower()
+    for v in MBROLA.get(code, ())[:1]:
+        dirs = ("/usr/share/mbrola", "/usr/lib/x86_64-linux-gnu/espeak-ng-data/voices/mb")
+        if any(os.path.exists(os.path.join(d, MBROLA[code][1])) for d in dirs):
+            return v
+    # '+f3' variant + slower rate is noticeably smoother than the default male formant voice
+    return LANG_VOICE.get(code, "en-us") + "+f3"
 _BINARIES = ("espeak-ng", "espeak", "say", "spd-say")
 
 
@@ -39,7 +51,7 @@ def _binary_cmd(b, text, lang, wav=None):
         return ["powershell", "-Command", "Add-Type -AssemblyName System.Speech;"
                 "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;" + out + "$s.Speak($args[0])", text]
     if b.startswith("espeak"):
-        return [b, "-v", LANG_VOICE.get(lang, "en-us")] + (["-w", wav] if wav else []) + [text]
+        return [b, "-v", _espeak_voice(lang), "-s", "150", "-p", "45"] + (["-w", wav] if wav else []) + [text]
     if b == "say":
         return ["say"] + (["-o", wav, "--data-format=LEI16@22050"] if wav else []) + [text]
     return None if wav else [b, text]
