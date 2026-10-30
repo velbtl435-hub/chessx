@@ -1,6 +1,7 @@
 """Self-test: python -m chessx_libs.i18n"""
 from .strings import STRINGS
 from .translator import Translator
+from .namespaces import NAMESPACES
 
 # Keep in sync with strings.py: every language must have exactly this many keys.
 EXPECTED_KEYS = 84
@@ -30,4 +31,14 @@ def run() -> bool:
         raise AssertionError("unsupported lang accepted")
     except ValueError:
         pass
+    for name, table in NAMESPACES.items():
+        ns_en = set(table["en"])
+        assert set(table) == {"en", "pt", "ja"}, name
+        for lang, entries in table.items():
+            assert set(entries) == ns_en, (name, lang, ns_en ^ set(entries))
+            assert all(k.startswith(name + ".") for k in entries), name
+            assert all(v.strip() for v in entries.values()), (name, lang)
+    tr.set_lang("pt")
+    assert tr("menu.back") == NAMESPACES["menu"]["pt"]["menu.back"]
+    assert tr("menu.unavailable", what="x") == NAMESPACES["menu"]["pt"]["menu.unavailable"].format(what="x")
     return True
