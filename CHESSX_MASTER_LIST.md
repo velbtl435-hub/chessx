@@ -652,3 +652,22 @@ Name: **TamagóX** — with a capital X, not "chi".
 
 ### 31.3 Rank
 - Class A
+
+---
+
+## 32. SOS EMERGENCY SYSTEM (USER REQUEST 10/30/2026)
+
+### 32.1 Goal
+- Emergency alarm sent by email and messaging/social networks
+
+### 32.2 Features
+- Channels: email (SMTP), Telegram (Bot API), WhatsApp (official WhatsApp Business/Cloud API), extensible to others
+- Pre-configured message and contact list set up by the user in advance
+- Optional geolocation (attached only if the user enabled it)
+- Cancellation window: countdown before sending, user can cancel (avoids false alarms)
+- Triggers: manual command/hotkey, optional dead-man's switch
+- Delivery log and retry; credentials stored encrypted in the keystore
+- Links to the wellbeing mode (section 21) and its help lines; never replaces emergency services (190/192/193 in Brazil)
+
+### 32.3 Rank
+- Class A
