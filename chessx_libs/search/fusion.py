@@ -20,9 +20,11 @@ def fuse(lists: List[List[Result]]) -> List[Result]:
             k = norm_url(r.url)
             if k in merged:
                 m = merged[k]
-                m.score += r.score + AGREEMENT_BONUS
-                if r.engine not in m.engines:
+                if r.engine not in m.engines:  # bonus only when a *different* engine agrees
+                    m.score += r.score + AGREEMENT_BONUS
                     m.engines.append(r.engine)
+                else:
+                    m.score = max(m.score, r.score)
                 if len(r.snippet) > len(m.snippet):
                     m.snippet = r.snippet
             else:

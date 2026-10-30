@@ -11,3 +11,14 @@ Multi-engine web search with result fusion (rank-based scoring, URL de-duplicati
   This is outside ChessX's control, so prefer ddgs/Brave/SearXNG for reliability.
 - **Env:** `BRAVE_API_KEY`, `SEARXNG_URL` (default http://localhost:8888), `WEBSERP_URL` with a `{q}` placeholder, optional `WEBSERP_KEY`.
 - **Optional dependency:** `ddgs` (`pip install ddgs`), which is the most reliable backend. `safe_search()`/`multi_search()` return [] on failure.
+
+## End-to-end (real network) checks
+- Table per engine (ok/skip/blocked/error, results, latency, DuckDuckGo attempt stats) plus fusion:
+  `python3 -m chessx_libs.search.e2e` (optional queries as args; default `python-chess`, `stockfish`).
+- Tests: `python3 -m unittest tests.test_search_e2e -v` runs only the offline fusion tests;
+  `CHESSX_E2E=1 python3 -m unittest tests.test_search_e2e -v` adds the real-network tests.
+- Engines without config are skipped, not failed: Brave (`BRAVE_API_KEY`), WebSerp (`WEBSERP_URL`),
+  SearXNG (`SEARXNG_URL`, else probes http://localhost:8888; `SEARXNG_PUBLIC=1` also probes a few public instances,
+  which usually refuse `format=json`). ddgs is skipped if not installed. DuckDuckGo is skipped if every attempt is blocked.
+- `DuckDuckGoEngine.attempt_log` holds `(how, impersonate, endpoint, method, outcome)` for each attempt of the last search.
+- Fusion: the agreement bonus applies only when a *different* engine returns the same normalized URL.

@@ -55,6 +55,7 @@ class DuckDuckGoEngine(Engine):
     def __init__(self, attempts: int = 6, seed=None):
         self.attempts = attempts
         self.last_error = None
+        self.attempt_log = []  # (how, impersonate, endpoint, method, outcome) per attempt of last search()
         try:
             from ..crypto.netsec import FingerprintRotator
             self.rotator = FingerprintRotator(seed)
@@ -98,18 +99,23 @@ class DuckDuckGoEngine(Engine):
 
     def search(self, query, limit=10):
         blocked = 0
+        self.attempt_log = []
         for plan in self._plans():
             try:
                 page = self._fetch(*plan, query)
             except Exception as e:
                 self.last_error = e
+                self.attempt_log.append(plan + ("error",))
                 continue
             out = self.parse(page, limit)
             if out:
+                self.attempt_log.append(plan + ("ok",))
                 return out
             if "anomaly" in page:
                 blocked += 1
+                self.attempt_log.append(plan + ("blocked",))
             else:
+                self.attempt_log.append(plan + ("empty",))
                 return []  # genuine empty result page
         raise SearchError("duckduckgo served a bot-check (anomaly) page on all %d attempts "
                           "(external anti-bot; use ddgs/Brave/SearXNG instead)" % blocked if blocked
