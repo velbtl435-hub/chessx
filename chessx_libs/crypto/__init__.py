@@ -1,6 +1,7 @@
 """ChessX crypto & privacy suite. Pure-Python reference primitives (NOT constant-time;
 for production use the `cryptography` package -- see README.md)."""
-from .kdf import hkdf, hkdf_extract, hkdf_expand, argon2id, ARGON2_BACKEND
+from .kdf import hkdf, hkdf_extract, hkdf_expand, argon2id, ARGON2_BACKEND, Argon2Unavailable
+from .passwords import hash_password, verify_password, check_needs_rehash
 from .otp import (hotp, totp, verify_totp, match_totp, new_secret, provisioning_uri, provisioning_qr,
                   TOTPVerifier, LockedOut, generate_backup_codes, use_backup_code)
 from .x25519 import x25519, x25519_keypair, x25519_shared
