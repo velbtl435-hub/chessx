@@ -397,18 +397,68 @@ def _evidence_summary(matched, verdict, score):
     return [_ev("summary", f"{len(matched)} regra(s) batida(s); score={score} → {verdict}")]
 
 
-def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None) -> dict:
+ENV_ALLOW = "CHESSX_TRIAGE_ALLOWLIST"
+ALLOWLIST_FILE = os.path.join(RULES_DIR, "allowlist.sha256")
+_HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def load_allowlist(extra=None) -> set:
+    """Builtin allowlist + files in $CHESSX_TRIAGE_ALLOWLIST (os.pathsep) + *extra* paths."""
+    files = [ALLOWLIST_FILE] + [f for f in os.environ.get(ENV_ALLOW, "").split(os.pathsep) if f] + list(extra or [])
+    out = set()
+    for f in files:
+        try:
+            with open(f, encoding="utf-8") as fh:
+                for line in fh:
+                    tok = line.split("#", 1)[0].strip().split()
+                    if tok and _HEX64.match(tok[0]):
+                        out.add(tok[0].lower())
+        except OSError:
+            continue
+    return out
+
+
+def build_allowlist(dirs, max_size: int = 64 << 20):
+    """Yield 'sha256  path' for regular files under *dirs* (read-only hashing, never executed)."""
+    import hashlib
+    for d in dirs:
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            p = os.path.join(d, n)
+            try:
+                if not os.path.isfile(p) or os.path.getsize(p) > max_size:
+                    continue
+                h = hashlib.sha256()
+                with open(p, "rb") as fh:
+                    for chunk in iter(lambda: fh.read(1 << 20), b""):
+                        h.update(chunk)
+                yield f"{h.hexdigest()}  {p}"
+            except OSError:
+                continue
+
+
+def triage(report: dict, data: bytes | None = None, extra_rule_dirs=None, allowlist=None) -> dict:
     """Score an investigate() report. Never executes the sample; never touches the network."""
     rules, errors = load_rules(extra_rule_dirs)
     ctx = build_context(report, data)
     matched = run_rules(ctx, rules)
     score = score_matches(matched)
+    allow = load_allowlist() if allowlist is None else set(allowlist)
+    allowlisted = bool(ctx["hashes"].get("sha256")) and ctx["hashes"]["sha256"] in allow
+    if allowlisted:
+        score = 0.0
     verdict = verdict_for(score)
+    evidence = _evidence_summary(matched, verdict, score)
+    if allowlisted:
+        evidence.insert(0, _ev("allowlist", f"sha256:{ctx['hashes']['sha256']} na allowlist → clean"))
     return {"disclaimer": DISCLAIMER, "score": score, "verdict": verdict,
-            "evidence": _evidence_summary(matched, verdict, score), "matched": matched,
+            "evidence": evidence, "matched": matched,
             "engines": {"chessx_rules": True, "chessx_rules_loaded": len(rules), "yara": False,
                         "yara_rules_loaded": 0},
-            "allowlisted": False, "limits": {"bytes_scanned": len(data) if data is not None else 0,
+            "allowlisted": allowlisted, "limits": {"bytes_scanned": len(data) if data is not None else 0,
                                              "truncated": False, "timed_out": False},
             "errors": errors, "confidence": round(min(1.0, 0.3 + 0.1 * len(matched)), 2) if matched else 0.5,
             "thresholds": dict(THRESHOLDS), "schema_version": SCHEMA_VERSION}

@@ -100,3 +100,61 @@ def test_no_eicar_literal_in_repo():
 def test_clean_verdict_still_has_score_and_evidence():
     t = tr.triage({"file": {"sha256": "0" * 64, "size": 3}}, b"abc")
     assert t["verdict"] == "clean" and t["score"] == 0 and t["evidence"] and "antivírus" in t["disclaimer"]
+
+
+SUS_C = r'''
+#include <stdio.h>
+extern void VirtualAllocEx(void) __attribute__((weak));
+extern void WriteProcessMemory(void) __attribute__((weak));
+extern void CreateRemoteThread(void) __attribute__((weak));
+const char *a = "UPX!";
+const char *b = "http://203.0.113.7:8080/panel/gate.php";
+const char *c = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrstuvwx.onion";
+int main(void){ if (VirtualAllocEx) { VirtualAllocEx(); WriteProcessMemory(); CreateRemoteThread(); }
+  puts(a); puts(b); puts(c); return 0; }
+'''
+
+
+@pytest.fixture(scope="module")
+def suspicious_bin(tmp_path_factory):
+    import shutil, subprocess
+    if not shutil.which("gcc"):
+        pytest.skip("gcc not available")
+    d = tmp_path_factory.mktemp("sus")
+    (d / "s.c").write_text(SUS_C)
+    out = d / "sus"
+    subprocess.run(["gcc", "-O0", "-o", str(out), str(d / "s.c")], check=True)  # compiled, never run
+    return str(out)
+
+
+def _triage_path(p, **kw):
+    from chessx_libs.reversing.detective import investigate
+    r = investigate(p)
+    with open(p, "rb") as fh:
+        return tr.triage(r, fh.read(), **kw)
+
+
+def test_synthetic_suspicious_binary(suspicious_bin):
+    t = _triage_path(suspicious_bin)
+    ids = {m["id"] for m in t["matched"]}
+    assert {"cx.inj.process", "cx.pack.known", "cx.c2.url", "cx.c2.ip", "cx.c2.onion"} <= ids
+    assert t["verdict"] == "likely_malicious" and t["score"] >= 40
+    assert all(m["evidence"] for m in t["matched"])
+    assert any(e["offset"] is not None for m in t["matched"] for e in m["evidence"] if e["kind"] == "string")
+
+
+def test_allowlist_forces_clean(suspicious_bin, tmp_path):
+    import hashlib
+    h = hashlib.sha256(open(suspicious_bin, "rb").read()).hexdigest()
+    al = tmp_path / "al.sha256"
+    al.write_text("".join(l.split()[0] + "\n" for l in tr.build_allowlist([os.path.dirname(suspicious_bin)]) if l.endswith(suspicious_bin)))
+    assert h in tr.load_allowlist([str(al)])
+    t = _triage_path(suspicious_bin, allowlist={h})
+    assert t["allowlisted"] and t["verdict"] == "clean" and t["score"] == 0 and t["matched"]
+    assert t["evidence"][0]["kind"] == "allowlist"
+
+
+def test_info_low_only_never_likely():
+    m = [{"weight": 30, "severity": "low"}, {"weight": 30, "severity": "info"}]
+    assert tr.verdict_for(tr.score_matches(m)) == "suspicious"
+    assert tr.score_matches([{"weight": 80, "severity": "high"}] * 2) == 100

@@ -1,0 +1,194 @@
+# ChessX built-in triage heuristics (MIT). Spec §3. Weights sum into score (cap 100):
+#   0–14 clean | 15–39 suspicious | >=40 likely_malicious. Heuristics are NOT an antivirus.
+
+# ---- 3.1 entropy / packing
+[[rule]]
+id = "cx.pack.high_entropy"
+name = "High-entropy section / packed layout"
+severity = "medium"
+description = "Seção com entropia > 7.2 ou layout marcado como empacotado pela proveniência."
+license = "MIT"
+version = "1.0.0"
+weight = 15
+tags = ["packer", "entropy"]
+[rule.condition]
+any = [ { sections = { entropy_gt = 7.2 } }, { packing = { likely_packed = true } } ]
+
+[[rule]]
+id = "cx.pack.known"
+name = "Known packer markers"
+severity = "medium"
+description = "Marcas de UPX/Themida/VMProtect/ASPack/MPRESS em fingerprint, seções ou strings."
+references = ["https://attack.mitre.org/techniques/T1027/002/"]
+license = "MIT"
+version = "1.0.0"
+weight = 25
+tags = ["packer"]
+[rule.condition]
+any = [
+  { fingerprint = { toolchain_contains = "UPX" } },
+  { fingerprint = { toolchain_contains = "Themida" } },
+  { fingerprint = { toolchain_contains = "VMProtect" } },
+  { sections = { name_any = ["UPX0", "UPX1", ".themida", ".vmp0", ".vmp1", ".aspack", ".MPRESS1", ".MPRESS2"] } },
+  { strings = { contains_any = ["UPX!"] } },
+]
+
+[[rule]]
+id = "cx.pack.overall"
+name = "High overall entropy"
+severity = "low"
+description = "Arquivo > 4 KiB com entropia global > 7.5 (compactado/cifrado)."
+license = "MIT"
+version = "1.0.0"
+weight = 10
+tags = ["entropy"]
+[rule.condition]
+all = [ { entropy = { file_gt = 7.5 } }, { file = { size_gt = 4096 } } ]
+
+# ---- 3.2 suspicious import combos
+[[rule]]
+id = "cx.inj.process"
+name = "Process injection API combo"
+severity = "high"
+description = "VirtualAllocEx/WriteProcessMemory + CreateRemoteThread/NtCreateThreadEx/QueueUserAPC."
+references = ["https://attack.mitre.org/techniques/T1055/"]
+license = "MIT"
+version = "1.0.0"
+weight = 40
+tags = ["injection"]
+[rule.condition]
+all = [
+  { imports = { any = ["*VirtualAllocEx*", "*NtAllocateVirtualMemory*"] } },
+  { imports = { any = ["*WriteProcessMemory*", "*NtWriteVirtualMemory*"] } },
+  { imports = { any = ["*CreateRemoteThread*", "*NtCreateThreadEx*", "*QueueUserAPC*", "*SetThreadContext*"] } },
+]
+
+[[rule]]
+id = "cx.persist.runkey"
+name = "Persistence via Run key or service"
+severity = "medium"
+description = "APIs de registro + caminho CurrentVersion\\Run, ou criação de serviço."
+references = ["https://attack.mitre.org/techniques/T1547/001/", "https://attack.mitre.org/techniques/T1543/003/"]
+license = "MIT"
+version = "1.0.0"
+weight = 25
+tags = ["persistence"]
+[rule.condition]
+any = [
+  { all = [ { imports = { any = ["*RegSetValue*", "*RegCreateKey*"] } },
+            { strings = { contains_any = ["CurrentVersion\\Run"] } } ] },
+  { imports = { all = ["*CreateService*", "*StartService*"] } },
+]
+
+[[rule]]
+id = "cx.antidebug"
+name = "Anti-debug checks + timing"
+severity = "medium"
+description = "Checagens de depurador (IsDebuggerPresent/NtQueryInformationProcess/ptrace) junto de timing."
+references = ["https://attack.mitre.org/techniques/T1622/"]
+license = "MIT"
+version = "1.0.0"
+weight = 20
+tags = ["anti-debug"]
+[rule.condition]
+all = [
+  { imports = { any = ["*IsDebuggerPresent*", "*CheckRemoteDebuggerPresent*", "*NtQueryInformationProcess*", "*OutputDebugString*", "ptrace"] } },
+  { imports = { any = ["*GetTickCount*", "*QueryPerformanceCounter*", "*NtDelayExecution*"] } },
+]
+
+[[rule]]
+id = "cx.crypto_net"
+name = "Crypto + network in the same binary"
+severity = "low"
+description = "APIs de criptografia e de rede juntas (comum também em software legítimo)."
+license = "MIT"
+version = "1.0.0"
+weight = 20
+tags = ["crypto", "network"]
+[rule.condition]
+all = [
+  { imports = { any = ["*CryptEncrypt*", "*CryptDecrypt*", "*BCryptEncrypt*", "*BCryptDecrypt*", "EVP_*Encrypt*", "EVP_*Decrypt*"] } },
+  { imports = { any = ["*InternetOpen*", "*WinHttp*", "*WSAStartup*", "connect", "*HttpSendRequest*"] } },
+]
+
+[[rule]]
+id = "cx.cred.dump"
+name = "Credential dumping (LSASS)"
+severity = "high"
+description = "Referência a lsass + MiniDumpWriteDump/OpenProcess."
+references = ["https://attack.mitre.org/techniques/T1003/001/"]
+license = "MIT"
+version = "1.0.0"
+weight = 35
+tags = ["credentials"]
+[rule.condition]
+all = [
+  { strings = { contains_any = ["lsass"] } },
+  { imports = { any = ["*MiniDumpWriteDump*", "*OpenProcess*"] } },
+]
+
+# ---- 3.3 wrappers (context only)
+[[rule]]
+id = "cx.loader.wrapper"
+name = "Bundler / installer wrapper"
+severity = "info"
+description = "PyInstaller/Nuitka/NSIS — contexto, nunca sozinho suficiente."
+license = "MIT"
+version = "1.0.0"
+weight = 10
+tags = ["wrapper"]
+[rule.condition]
+any = [
+  { fingerprint = { toolchain_contains = "PyInstaller" } },
+  { fingerprint = { toolchain_contains = "Nuitka" } },
+  { strings = { contains_any = ["_MEIPASS", "Nullsoft Install System"] } },
+]
+
+# ---- 3.4 C2-like strings
+[[rule]]
+id = "cx.c2.url"
+name = "Beacon-like URL path"
+severity = "medium"
+description = "URL com caminho típico de painel/beacon (gate.php, panel, beacon)."
+license = "MIT"
+version = "1.0.0"
+weight = 15
+tags = ["c2"]
+[rule.condition]
+strings = { regex_any = ['https?://[^\s/]+/[^\s]*(gate|panel|beacon|bot)\.php', 'https?://[^\s/]+/(api/)?(beacon|tasks?|checkin)(/|\b)'] }
+
+[[rule]]
+id = "cx.c2.ip"
+name = "Literal IP:port"
+severity = "low"
+description = "IPv4 literal com porta embutido em strings."
+license = "MIT"
+version = "1.0.0"
+weight = 10
+tags = ["c2"]
+[rule.condition]
+strings = { regex_any = ['\b(?:\d{1,3}\.){3}\d{1,3}:\d{2,5}\b'] }
+
+[[rule]]
+id = "cx.c2.ua"
+name = "Legacy / bot user-agent"
+severity = "low"
+description = "User-Agent antigo/fixo comum em implantes (MSIE 6/7 compatível)."
+license = "MIT"
+version = "1.0.0"
+weight = 10
+tags = ["c2"]
+[rule.condition]
+strings = { contains_any = ["compatible; MSIE 6.0;", "compatible; MSIE 7.0; Windows NT 5.1"] }
+
+[[rule]]
+id = "cx.c2.onion"
+name = "Tor .onion address"
+severity = "medium"
+description = "Endereço .onion (v2/v3) embutido."
+license = "MIT"
+version = "1.0.0"
+weight = 20
+tags = ["c2", "tor"]
+[rule.condition]
+strings = { regex_any = ['\b[a-z2-7]{16}(?:[a-z2-7]{40})?\.onion\b'] }

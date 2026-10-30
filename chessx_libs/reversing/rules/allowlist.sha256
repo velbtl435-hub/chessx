@@ -1,0 +1,4 @@
+# SHA-256 allowlist (one hex digest per line, '#' comments). Known-good files → verdict clean.
+# Environment-specific system hashes are NOT committed; generate locally with:
+#   python -m chessx_libs.reversing.triage --build-allowlist /bin /usr/bin > my_allowlist.sha256
+#   export CHESSX_TRIAGE_ALLOWLIST=my_allowlist.sha256
