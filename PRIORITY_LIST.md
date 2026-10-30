@@ -21,7 +21,7 @@ Work top to bottom. Finish and test each item before starting the next.
 6. Agents package (see CHESSX_MASTER_LIST.md section 22)
 7. Deploy on Vercel Hobby
 8. E2E test with real network on all 6 engines (DuckDuckGo, Brave, ddgs, webserp, SearXNG, mock)
-22. Procedural audio system: 8-bit chiptune mixed with synthwave, plus synthesized retro-hardware sounds (HDD, fans, floppy, mechanical keyboard, CRT hum), no external samples; numpy + scipy; integrates with chessx_libs/sounds/ and TamagóX (see CHESSX_MASTER_LIST.md section 25)
+22. Procedural audio system: 8-bit chiptune mixed with synthwave, plus synthesized retro-hardware sounds (HDD, fans, floppy, mechanical keyboard, CRT hum), no external samples; numpy + scipy; integrates with chessx_libs/sounds/ and TamagóX (see CHESSX_MASTER_LIST.md section 24)
 
 ## B
 
