@@ -4,6 +4,8 @@ name: refresh-ping
 on:
   schedule: [{ cron: "0 */3 * * *" }]
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   ping:
     runs-on: ubuntu-latest
