@@ -25,6 +25,7 @@ VERSION = "0.6"
 class ChessX:
     def __init__(self, lang="en", mute=False, as_json=False):
         self.t = Translator(lang)
+        voice.bind_translator(self.t)  # voice follows the UI language (en/pt/ja)
         self.as_json = as_json
         if mute:
             os.environ["CHESSX_MUTE"] = "1"

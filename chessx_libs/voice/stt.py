@@ -137,11 +137,13 @@ def _to_16k_mono(path):
         return path, False
 
 
-def transcribe_file(path: str, model_path: str = None, lang: str = "en", strict: bool = False):
+def transcribe_file(path: str, model_path: str = None, lang: str = None, strict: bool = False):
     """Transcribe an audio file to UTF-8 text (accents kept, e.g. 'cavalo para é cinco').
 
     Returns None when no backend/model is available; with strict=True raises ModelNotFound instead.
     """
+    from .lang import current_lang
+    lang = current_lang(lang)
     if not os.path.isfile(path):
         return None
     vosk = _vosk()
@@ -188,8 +190,10 @@ def transcribe_file(path: str, model_path: str = None, lang: str = "en", strict:
 GOOGLE_LANG = {"en": "en-US", "pt": "pt-BR", "ja": "ja-JP"}
 
 
-def listen(timeout: float = 5.0, lang: str = "en"):
+def listen(timeout: float = 5.0, lang: str = None):
     """Capture one phrase from the microphone. Returns None (silently) if unavailable."""
+    from .lang import current_lang
+    lang = current_lang(lang)
     sr = _sr()
     if not sr:
         return None

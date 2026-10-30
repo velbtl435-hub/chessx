@@ -10,6 +10,8 @@ CHESSX_TTS_OFFLINE=1 (skip edge-tts).
 """
 import glob, os, shutil, subprocess, sys, tempfile
 
+from .lang import current_lang
+
 LANG_VOICE = {"en": "en-us", "pt": "pt-br", "ja": "ja"}
 # MBROLA diphone voices sound far less robotic than formant eSpeak; used when installed.
 MBROLA = {"en": ("mb-us1", "us1"), "pt": ("mb-br1", "br1"), "ja": ()}
@@ -214,7 +216,8 @@ def _render(b, text, path, lang):
     return os.path.isfile(path) and os.path.getsize(path) > 44
 
 
-def save_to_file(text: str, path: str, lang: str = "en"):
+def save_to_file(text: str, path: str, lang: str = None):
+    lang = current_lang(lang)
     """Render speech to a WAV file without audio hardware. Returns the backend used, or None."""
     for b in available_backends(lang):
         try:
@@ -248,8 +251,12 @@ def play_wav(path):
         return False
 
 
-def speak(text: str, lang: str = "en", dry_run: bool = False):
-    """Speak text with the most natural voice available. Returns the backend used, or 'noop'. Never raises."""
+def speak(text: str, lang: str = None, dry_run: bool = False):
+    """Speak text with the most natural voice available. Returns the backend used, or 'noop'. Never raises.
+
+    lang: en/pt/ja (aliases ok); None follows voice.set_lang / ChessX i18n.
+    """
+    lang = current_lang(lang)
     backends = available_backends(lang)
     if dry_run:
         return backends[0]
