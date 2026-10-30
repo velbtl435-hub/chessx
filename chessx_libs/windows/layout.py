@@ -47,7 +47,10 @@ class TabBar:
 
     def close(self, idx: int = None):
         if self.tabs:
-            self.tabs.pop(self.active if idx is None else idx)
+            i = self.active if idx is None else idx % len(self.tabs)
+            self.tabs.pop(i)
+            if i < self.active:  # keep the same tab focused when closing one to its left
+                self.active -= 1
             self.active = max(0, min(self.active, len(self.tabs) - 1))
 
     def cycle(self, step: int = 1):

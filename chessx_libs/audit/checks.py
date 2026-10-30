@@ -94,7 +94,8 @@ def audit_file(path: str):
         py_compile.compile(path, doraise=True)
     except py_compile.PyCompileError as e:
         return [Finding(path, 0, "bug", "high", f"does not compile: {e.msg.strip()[:200]}")]
-    src = open(path, encoding="utf-8", errors="replace").read()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        src = fh.read()
     tree = ast.parse(src)
     v = _Visitor(path)
     v.visit(tree)

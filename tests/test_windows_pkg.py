@@ -49,6 +49,16 @@ class TestTabBar(unittest.TestCase):
         tb.close()
         self.assertEqual(tb.active, 1)
 
+    def test_close_left_of_active_keeps_focus(self):
+        tb = TabBar()
+        for n in "abc":
+            tb.open(n)
+        tb.cycle(-1)  # active = b
+        tb.close(0)
+        self.assertEqual(tb.current().title, "b")
+        tb.close(-1)  # negative index closes last tab
+        self.assertEqual([t.title for t in tb.tabs], ["b"])
+
     def test_render(self):
         tb = TabBar()
         tb.open("a"); tb.open("b")
