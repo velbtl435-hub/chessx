@@ -16,6 +16,7 @@ LABELS = {
     "menu_intent": "Intent classifier", "language": "Language", "stats": "Stats",
     "menu_shell": "Free-text shell", "menu_selftest": "Selftest",
     "menu_browser": "ASCII browser", "menu_pixelart": "Pixel-art critters",
+    "menu_osint": "OSINT investigate (public sources)",
     "menu_title": "ChessX menu", "menu_unavailable": "unavailable", "menu_choose": "Choose",
     "quit": "Quit",
 }
@@ -90,7 +91,13 @@ def _crypto(app, ask):
     k, n = os.urandom(32), os.urandom(12)
     ok = c.chacha20_poly1305_decrypt(k, n, c.chacha20_poly1305_encrypt(k, n, b"chessx")) == b"chessx"
     return "TOTP secret %s -> code %s | chacha20-poly1305 roundtrip %s | argon2 backend %s" % (
-        s, c.totp(s), "ok" if ok else "FAIL", c.ARGON2_BACKEND)
+        s, c.totp(s), "ok" if ok else "FAIL", argon2_label(c.ARGON2_BACKEND))
+
+ARGON2_LABELS = {"argon2-cffi": "argon2-cffi", "cryptography": "cryptography (Argon2id)",
+                 "none": "none (Argon2id unavailable)"}
+
+def argon2_label(value):
+    return ARGON2_LABELS.get(value, str(value))
 
 def _reverse(app, ask):
     p = ask("file path")
@@ -209,6 +216,42 @@ def _pixelart(app, ask):
     return "\n".join(p.render_frame(name, i, color=False) for i in range(2))
 
 
+def _fmt_finding(f):
+    line = "[%s] %s %s: %s" % (f.source, f.kind, f.entity, f.title)
+    if f.url:
+        line += " <%s>" % f.url
+    return line + " (%.2f)" % f.confidence
+
+def _osint(app, ask, client=None, getpass_fn=None):
+    o = _imp("osint")
+    entity = ask("entity (domain/IP/email/username/file path, or 'pwned')")
+    if not entity:
+        return ""
+    if entity.strip().lower() == "pwned":
+        if getpass_fn is None:
+            from getpass import getpass as getpass_fn
+        pw = getpass_fn("password (not echoed): ")
+        if not pw:
+            return ""
+        try:
+            if client is None:
+                from chessx_libs.osint.engine import default_client
+                client = default_client()
+            n = o.password_count(pw, client)
+        except Exception as e:  # never include the password in the message
+            return "pwned check failed: %s" % type(e).__name__
+        finally:
+            pw = None
+        return "password seen %d times in breaches" % n if n else "password not found in known breaches"
+    findings = o.investigate(entity.strip(), client=client, commercial=False)
+    if not findings:
+        return "no findings for %s" % entity
+    lines = [_fmt_finding(f) for f in findings[:40]]
+    if len(findings) > 40:
+        lines.append("... %d more" % (len(findings) - 40))
+    return "\n".join(lines)
+
+
 def _future(mod, fn_names):
     def run(app, ask):
         m = _imp(mod)
@@ -236,4 +279,5 @@ ENTRIES = [
     Entry("25", None, "menu_selftest", _selftest),
     Entry("26", "browser", "menu_browser", _browser),
     Entry("27", "pixelart", "menu_pixelart", _pixelart),
+    Entry("28", "osint", "menu_osint", _osint),
 ]
