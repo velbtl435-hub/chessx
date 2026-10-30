@@ -24,7 +24,7 @@ Work top to bottom. Finish and test each item before starting the next.
 8. E2E test with real network on all 6 engines (DuckDuckGo, Brave, ddgs, webserp, SearXNG, mock)
 22. Procedural audio system: 8-bit chiptune mixed with synthwave, plus synthesized retro-hardware sounds (HDD, fans, floppy, mechanical keyboard, CRT hum), no external samples; numpy + scipy; integrates with chessx_libs/sounds/ and TamagóX (see CHESSX_MASTER_LIST.md section 24)
 24. Program reversal (MASTER §14.2): reversal_summary in detective.investigate(): toolchain/linker/language, packer verdict, import/export history, CFG highlights; static only | owner: Reversing Engineer | status: Done (d4ab13d..13d361e)
-25. Defensive malware triage (static only, spec docs/specs/MALWARE_TRIAGE.md): TOML/JSON rules + optional yara-python, weighted heuristics, `triage` key in detective.investigate() | owner: Reversing Engineer | status: In progress
+25. Defensive malware triage (static only, spec docs/specs/MALWARE_TRIAGE.md): TOML/JSON rules + optional yara-python, weighted heuristics, `triage` key in detective.investigate() | owner: Reversing Engineer | status: Done (fb76206..7c2ea2e)
 
 ## B
 
