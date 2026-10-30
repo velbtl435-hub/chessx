@@ -107,11 +107,50 @@ def main():
         fails += not ok
         print("%-4s reactor export cx_abi_version() == 1" % ("ok" if ok else "FAIL"))
     fails += run_search(build, a.wasmtime)
+    fails += capstone_parity(build, a.wasmtime)
     # known-answer checks
     assert hf.crc32_py(b"123456789") == 0xCBF43926
     import zlib
     assert all(hf.crc32(s) == zlib.crc32(s) for s in (b"", b"a", b"ChessX", bytes(range(256))))
     return 1 if fails else 0
+
+
+def capstone_parity(build, wasmtime):
+    """c/capstone: native CLI = wasm CLI = ctypes = pip capstone (reference). Skipped on the stub build."""
+    from chessx_libs.native import capstone as ncs
+    if ncs._lib() is None:
+        print("WARN: capstone module is the stub build (needs c/capstone/module.mk), capstone parity skipped")
+        return 0
+    try:
+        import capstone  # noqa: F401
+    except ImportError:
+        print("WARN: pip capstone (reference) not installed, capstone parity skipped")
+        return 0
+    cli, wasm = os.path.join(build, "native", "capstone_cli"), os.path.join(build, "wasm", "capstone.wasm")
+    fmt = lambda ins: "\n".join("%x\t%d\t%s\t%s" % i for i in ins)
+    sh = lambda cmd: subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.rstrip("\n")
+    runners = {
+        "pip-capstone": lambda v: fmt(ncs.disasm_pip(bytes.fromhex(v[3]), int(v[0]), int(v[1]), int(v[2], 16))),
+        "ctypes": lambda v: fmt(ncs.disasm_native(bytes.fromhex(v[3]), int(v[0]), int(v[1]), int(v[2], 16))),
+        "native-cli": lambda v: sh([cli] + v),
+    }
+    if os.path.exists(wasm) and shutil.which(wasmtime):
+        runners["wasmtime"] = lambda v: sh([wasmtime, "run", wasm] + v)
+    if os.path.exists(wasm) and shutil.which("wasmer"):
+        runners["wasmer"] = lambda v: sh(["wasmer", "run", wasm, "--"] + v)
+    fails, n = 0, 0
+    for line in open(os.path.join(C, "capstone", "vectors.txt"), encoding="utf-8"):
+        if not line.strip() or line.startswith("#"):
+            continue
+        v = line.split(); n += 1
+        outs = {k: f(v) for k, f in runners.items()}
+        same = len(set(outs.values())) == 1
+        fails += not same
+        first = outs["pip-capstone"].splitlines()[:1]
+        print("%-4s capstone %-40s %s" % ("ok" if same else "FAIL", " ".join(v)[:40], first[0].replace("\t", " ") if same and first else outs))
+    print("capstone parity: %d vectors x %d backends (%s): %s" % (n, len(runners), ",".join(runners),
+                                                                   "ALL MATCH" if not fails else "%d FAIL" % fails))
+    return fails
 
 
 if __name__ == "__main__":
